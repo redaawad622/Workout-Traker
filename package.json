@@ -1,0 +1,22 @@
+{
+  "name": "workout-log",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt generate",
+    "preview": "nuxt preview"
+  },
+  "dependencies": {
+    "@nuxtjs/tailwindcss": "^6.14.0",
+    "@pinia/nuxt": "^1.0.3",
+    "@vite-pwa/nuxt": "^1.1.1",
+    "chart.js": "^4.5.1",
+    "dexie": "^4.4.6",
+    "nuxt": "^3.21.11",
+    "pinia": "^4.1.0",
+    "vue": "^3.5.44",
+    "vue-chartjs": "^5.3.4",
+    "vue-router": "^4.6.4"
+  }
+}
