@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Unit } from '~/utils/units'
 import type { Entry } from '~/utils/db'
+import type { AiExercise } from '~/utils/ai'
 import { alternativesOf, DAY_LABELS, slotsOf, type DayType } from '~/utils/exercises'
 import { convertedFull, daysBetween, fmtDay, kgOf, relativeDay, splitName, todayISO } from '~/utils/format'
 
@@ -171,8 +172,16 @@ async function save() {
     stopEdit()
     return
   }
-  // A brand-new exercise on a split day joins that day's list.
-  if (dayType.value !== 'full' && !store.exercises.includes(name.value)) await store.addToSplit(dayType.value, name.value)
+  // A brand-new exercise on a split day joins that day's list (or the day Claude suggested).
+  const info = aiInfo.value?.name === name.value ? aiInfo.value : null
+  if (!store.exercises.includes(name.value)) {
+    if (info) await store.addToSplit(info.splitDay, name.value)
+    else if (dayType.value !== 'full') await store.addToSplit(dayType.value, name.value)
+  }
+  if (info) {
+    await store.saveExerciseInfo(name.value, info)
+    aiInfo.value = null
+  }
   if (!store.dayTypes[form.date]) await store.setDayType(form.date, dayType.value)
   await store.add({
     date: form.date,
@@ -197,8 +206,14 @@ const pickerRows = computed(() =>
     .map((names, i) => ({ n: i + 1, names: names.filter((x) => !covered.value.has(x)) }))
     .filter((r) => r.names.length)
 )
-function pick(n: string) {
+// Set when the exercise came from "Ask Claude"; saved with its first log.
+const aiInfo = ref<AiExercise | null>(null)
+
+const muscles = computed(() => (store.exerciseInfo[name.value] ?? (aiInfo.value?.name === name.value ? aiInfo.value : null))?.muscles.join(' · '))
+
+function pick(n: string, info?: AiExercise) {
   editing.value = null
+  aiInfo.value = info ?? null
   if (remaining.value.includes(n)) {
     form.exercise = n
     form.custom = ''
@@ -206,6 +221,7 @@ function pick(n: string) {
     form.custom = n
   }
   form.weight = undefined
+  if (info) form.perDumbbell = info.perDumbbell
   picking.value = false
 }
 
@@ -337,6 +353,7 @@ const segment = (s: string) =>
             <div class="flex min-w-0 flex-col gap-1">
               <span class="text-xs font-medium uppercase tracking-[0.06em] text-accent-400">{{ kicker }}</span>
               <span class="text-[26px] font-medium leading-[1.15] tracking-[-0.01em]">{{ name }}</span>
+              <span v-if="muscles" class="text-[13px] text-neutral-400">{{ muscles }}</span>
             </div>
             <button
               v-if="editing"

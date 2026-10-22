@@ -13,6 +13,9 @@ export default defineNuxtConfig({
     '~/assets/css/main.css'
   ],
   tailwindcss: { cssPath: false },
+  // `npm run build` (Vercel) prerenders every page as static HTML and deploys server/api as
+  // a function for "Ask Claude". `npm run ios` uses `nuxt generate`: static only, no server.
+  nitro: { prerender: { crawlLinks: true, routes: ['/', '/log', '/diet', '/progress', '/reports', '/data'] } },
   app: {
     head: {
       title: 'Workout Log',
@@ -42,7 +45,7 @@ export default defineNuxtConfig({
         { src: 'maskable-icon-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
       ]
     },
-    workbox: { navigateFallback: '/', globPatterns: ['**/*.{js,css,html,woff2}'] },
+    workbox: { navigateFallback: '/', navigateFallbackDenylist: [/^\/api\//], globPatterns: ['**/*.{js,css,html,woff2}'] },
     devOptions: { enabled: false }
   }
 })
