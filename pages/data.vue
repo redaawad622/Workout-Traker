@@ -67,7 +67,12 @@ const failed = computed(() => status.value && !status.value.ok)
 
 <template>
   <div class="flex flex-col gap-5">
-    <h1 class="text-[28px] font-medium tracking-[-0.01em]">Data</h1>
+    <div class="flex items-center gap-1">
+      <NuxtLink to="/reports" aria-label="Reports" class="-ml-2.5 flex size-11 items-center justify-center text-[22px] text-neutral-300">
+        <i class="ph ph-caret-left" />
+      </NuxtLink>
+      <h1 class="text-[28px] font-medium tracking-[-0.01em]">Data</h1>
+    </div>
 
     <div class="flex items-start gap-3">
       <i class="ph ph-device-mobile flex-none text-2xl text-accent-400" />
