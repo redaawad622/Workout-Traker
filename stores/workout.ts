@@ -1,27 +1,43 @@
 import { defineStore } from 'pinia'
-import type { Entry } from '~/utils/db'
+import type { CustomFood, Entry, Meal } from '~/utils/db'
 import { SEED_ENTRIES } from '~/utils/seed'
 import { toKg } from '~/utils/units'
 import { ALTERNATIVE_GROUPS, DEFAULT_SPLIT, SPLIT_DAYS, slotsOf, type DayType, type SplitDay } from '~/utils/exercises'
 
 const SOURCES = ['assessment', 'logged', 'unverified']
 
-export function parseBackup(json: string): Entry[] {
+const isDate = (d: unknown) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)
+const isNutrients = (n: any) => n && typeof n === 'object' && typeof n.kcal === 'number'
+
+export interface Backup {
+  entries: Entry[]
+  meals?: Meal[] // absent in backups made before the diet log
+  foods?: CustomFood[]
+}
+
+// Accepts the original format (a bare array of entries) and the current one
+// ({ entries, meals, foods }).
+export function parseBackup(json: string): Backup {
   const data = JSON.parse(json)
+  const backup: Backup = Array.isArray(data) ? { entries: data } : data ?? {}
   const valid =
-    Array.isArray(data) &&
-    data.every(
+    Array.isArray(backup.entries) &&
+    backup.entries.every(
       (e) =>
         e &&
-        typeof e.date === 'string' &&
-        /^\d{4}-\d{2}-\d{2}$/.test(e.date) &&
+        isDate(e.date) &&
         typeof e.exercise === 'string' &&
         typeof e.weight === 'number' &&
         (e.unit === 'lbs' || e.unit === 'kg') &&
         SOURCES.includes(e.source)
-    )
+    ) &&
+    (backup.meals === undefined ||
+      (Array.isArray(backup.meals) &&
+        backup.meals.every((m) => m && isDate(m.date) && typeof m.name === 'string' && typeof m.grams === 'number' && isNutrients(m.per100)))) &&
+    (backup.foods === undefined ||
+      (Array.isArray(backup.foods) && backup.foods.every((f) => f && typeof f.name === 'string' && isNutrients(f.per100))))
   if (!valid) throw new Error('Not a Workout Log backup')
-  return data
+  return backup
 }
 
 export const useWorkoutStore = defineStore('workout', {
@@ -187,16 +203,32 @@ export const useWorkoutStore = defineStore('workout', {
     },
 
     // Throws before touching the database if the file isn't a Workout Log backup.
+    // Meals and foods are only replaced when the file has them, so an older
+    // workouts-only backup leaves the diet log alone.
     async importJson(json: string) {
       const data = parseBackup(json)
       const db = useDb()
-      await db.entries.clear()
-      await db.entries.bulkAdd(data.map(({ id, ...rest }) => rest))
+      const strip = <T extends { id?: number }>(list: T[]) => list.map(({ id, ...rest }) => rest as T)
+      await db.transaction('rw', db.entries, db.meals, db.foods, async () => {
+        await db.entries.clear()
+        await db.entries.bulkAdd(strip(data.entries))
+        if (data.meals) {
+          await db.meals.clear()
+          await db.meals.bulkAdd(strip(data.meals))
+        }
+        if (data.foods) {
+          await db.foods.clear()
+          await db.foods.bulkAdd(strip(data.foods))
+        }
+      })
       this.entries = await db.entries.toArray()
+      return data
     },
 
-    exportJson() {
-      return JSON.stringify(this.entries, null, 2)
+    async exportJson() {
+      const db = useDb()
+      const [meals, foods] = await Promise.all([db.meals.toArray(), db.foods.toArray()])
+      return JSON.stringify({ app: 'workout-log', version: 2, entries: this.entries, meals, foods }, null, 2)
     },
 
     exportMarkdown() {

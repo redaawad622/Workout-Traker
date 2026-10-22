@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { parseBackup } from '~/stores/workout'
 import { todayISO } from '~/utils/format'
+import { useDietStore } from '~/stores/diet'
 
 const store = useWorkoutStore()
+const diet = useDietStore()
 const status = ref<{ ok: boolean; text: string; file?: string } | null>(null)
-const pending = ref<{ file: string; json: string } | null>(null)
+const pending = ref<{ file: string; json: string; meals: boolean } | null>(null)
+const pendingHasMeals = computed(() => !!pending.value?.meals)
 
 function download(name: string, text: string, type: string) {
   const url = URL.createObjectURL(new Blob([text], { type }))
@@ -22,8 +25,8 @@ async function onPick(e: Event) {
   if (!file) return
   const json = await file.text()
   try {
-    parseBackup(json)
-    pending.value = { file: file.name, json }
+    const backup = parseBackup(json)
+    pending.value = { file: file.name, json, meals: !!backup.meals }
   } catch {
     status.value = { ok: false, text: "isn't a Workout Log backup. Nothing was changed.", file: file.name }
   }
@@ -33,11 +36,17 @@ async function replace() {
   const p = pending.value!
   pending.value = null
   try {
-    await store.importJson(p.json)
-    status.value = { ok: true, text: `Imported ${store.entries.length} entries · ${p.file}` }
+    const data = await store.importJson(p.json)
+    await diet.load(store.latestBodyWeight)
+    const meals = data.meals ? ` and ${data.meals.length} meals` : ''
+    status.value = { ok: true, text: `Imported ${store.entries.length} entries${meals} · ${p.file}` }
   } catch {
     status.value = { ok: false, text: "isn't a Workout Log backup. Nothing was changed.", file: p.file }
   }
+}
+
+async function exportBackup() {
+  download(`workout-log-${todayISO()}.json`, await store.exportJson(), 'application/json')
 }
 
 const failed = computed(() => status.value && !status.value.ok)
@@ -75,10 +84,10 @@ const failed = computed(() => status.value && !status.value.ok)
       <h2 class="label">Export</h2>
       <button
         class="card flex min-h-[60px] items-center gap-3.5 px-4 text-left active:bg-neutral-900"
-        @click="download(`workout-log-${todayISO()}.json`, store.exportJson(), 'application/json')"
+        @click="exportBackup"
       >
         <i class="ph ph-download-simple text-[22px] text-accent-400" />
-        <span class="flex flex-1 flex-col"><span class="text-base">JSON backup</span><span class="text-xs text-neutral-400">Full data, can be re-imported</span></span>
+        <span class="flex flex-1 flex-col"><span class="text-base">JSON backup</span><span class="text-xs text-neutral-400">Workouts and meals, can be re-imported</span></span>
       </button>
       <button
         class="card flex min-h-[60px] items-center gap-3.5 px-4 text-left active:bg-neutral-900"
@@ -115,7 +124,7 @@ const failed = computed(() => status.value && !status.value.ok)
         >
           <h2 id="replace-title" class="text-xl font-medium">Replace all data?</h2>
           <p class="text-[15px] leading-normal text-neutral-300">
-            {{ pending.file }} will replace the {{ store.entries.length }} entries on this phone. This can't be undone.
+            {{ pending.file }} will replace the {{ store.entries.length }} entries<template v-if="pendingHasMeals"> and {{ diet.meals.length }} meals</template> on this phone. This can't be undone.
           </p>
           <div class="mt-2 flex flex-col gap-2">
             <button class="h-[52px] rounded-md text-base font-medium text-warn-text shadow-[inset_0_0_0_1px_theme(colors.warn.line)] active:bg-warn-tint" @click="replace">
