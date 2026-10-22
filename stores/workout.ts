@@ -17,6 +17,21 @@ export const useWorkoutStore = defineStore('workout', {
 
     unverified: (s) => s.entries.filter((e) => e.source === 'unverified'),
 
+    // Initial assessment in the original order the exercises were recorded.
+    assessment: (s) =>
+      s.entries.filter((e) => e.source === 'assessment').sort((a, b) => (a.id ?? 0) - (b.id ?? 0)),
+
+    // Logged sessions grouped by date, newest first.
+    sessions: (s) => {
+      const map = new Map<string, Entry[]>()
+      for (const e of s.entries.filter((x) => x.source === 'logged').sort((a, b) => (a.id ?? 0) - (b.id ?? 0))) {
+        map.set(e.date, [...(map.get(e.date) ?? []), e])
+      }
+      return [...map.entries()]
+        .sort((a, b) => b[0].localeCompare(a[0]))
+        .map(([date, items]) => ({ date, items, bodyWeightKg: items.find((i) => i.bodyWeightKg)?.bodyWeightKg }))
+    },
+
     byExercise() {
       return (name: string) =>
         this.verified.filter((e) => e.exercise === name)
