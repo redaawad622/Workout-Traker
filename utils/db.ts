@@ -28,6 +28,8 @@ class WorkoutDB extends Dexie {
 
   constructor() {
     super('workout-log')
+    // Never change or remove an existing version: add a new this.version(n + 1) with an
+    // .upgrade() instead, so logged data on people's devices survives app updates.
     this.version(1).stores({
       entries: '++id, date, exercise, source',
       meta: 'key'

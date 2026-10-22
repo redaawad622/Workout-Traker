@@ -133,6 +133,12 @@ export const useWorkoutStore = defineStore('workout', {
       this.entries = this.entries.filter((e) => e.id !== id)
     },
 
+    async update(id: number, changes: Partial<Entry>) {
+      await useDb().entries.update(id, changes)
+      const e = this.entries.find((x) => x.id === id)
+      if (e) Object.assign(e, changes)
+    },
+
     async confirm(id: number, date: string) {
       await useDb().entries.update(id, { source: 'logged', date })
       const e = this.entries.find((x) => x.id === id)
