@@ -4,6 +4,26 @@ import { SEED_ENTRIES } from '~/utils/seed'
 import { toKg } from '~/utils/units'
 import { ALTERNATIVE_GROUPS } from '~/utils/exercises'
 
+const SOURCES = ['assessment', 'logged', 'unverified']
+
+export function parseBackup(json: string): Entry[] {
+  const data = JSON.parse(json)
+  const valid =
+    Array.isArray(data) &&
+    data.every(
+      (e) =>
+        e &&
+        typeof e.date === 'string' &&
+        /^\d{4}-\d{2}-\d{2}$/.test(e.date) &&
+        typeof e.exercise === 'string' &&
+        typeof e.weight === 'number' &&
+        (e.unit === 'lbs' || e.unit === 'kg') &&
+        SOURCES.includes(e.source)
+    )
+  if (!valid) throw new Error('Not a Workout Log backup')
+  return data
+}
+
 export const useWorkoutStore = defineStore('workout', {
   state: () => ({ entries: [] as Entry[], ready: false }),
 
@@ -23,6 +43,18 @@ export const useWorkoutStore = defineStore('workout', {
         }
       }
       return list
+    },
+
+    // Training slots in order: alternatives (either/or) share one slot.
+    slots(): string[][] {
+      const slots: string[][] = []
+      for (const name of this.exercises) {
+        const group = ALTERNATIVE_GROUPS.find((g) => g.includes(name))
+        const existing = group && slots.find((s) => group.includes(s[0]))
+        if (existing) existing.push(name)
+        else slots.push([name])
+      }
+      return slots
     },
 
     // Verified entries only, newest first.
@@ -107,8 +139,9 @@ export const useWorkoutStore = defineStore('workout', {
       if (e) Object.assign(e, { source: 'logged', date })
     },
 
+    // Throws before touching the database if the file isn't a Workout Log backup.
     async importJson(json: string) {
-      const data = JSON.parse(json) as Entry[]
+      const data = parseBackup(json)
       const db = useDb()
       await db.entries.clear()
       await db.entries.bulkAdd(data.map(({ id, ...rest }) => rest))
