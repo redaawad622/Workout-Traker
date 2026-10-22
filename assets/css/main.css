@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body {
+    @apply bg-bg font-sans text-ink antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+  :focus {
+    outline: none;
+  }
+  :focus-visible {
+    outline: 2px solid theme('colors.accent.DEFAULT');
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: color-mix(in srgb, theme('colors.accent.DEFAULT') 30%, transparent);
+  }
+  button {
+    touch-action: manipulation;
+  }
+}
+
+@layer components {
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+  .label {
+    @apply text-[13px] text-neutral-400;
+  }
+  .card {
+    @apply rounded-lg bg-surface shadow-sm;
+  }
+  /* Outlined accent action: the Nocturne primary is a line, never a fill. */
+  .btn-outline {
+    @apply flex items-center justify-center gap-1.5 rounded-md font-medium text-accent-300 shadow-[inset_0_0_0_1px_theme(colors.accent.DEFAULT)] active:bg-accent-900;
+  }
+  .chip {
+    @apply flex h-[30px] items-center gap-1 rounded-[15px] px-2.5 text-[13px];
+  }
+}

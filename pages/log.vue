@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import type { Unit } from '~/utils/units'
-import { toKg, toLbs } from '~/utils/units'
+import { alternativesOf } from '~/utils/exercises'
+import { convertedFull, daysBetween, fmtDay, kgOf, relativeDay, splitName, todayISO } from '~/utils/format'
 
 const store = useWorkoutStore()
-const today = new Date().toISOString().slice(0, 10)
 
 const form = reactive({
-  date: today,
+  date: todayISO(),
   bodyWeightKg: store.latestBodyWeight as number | undefined,
   exercise: '',
   custom: '',
@@ -28,8 +28,22 @@ const covered = computed(() => {
   return set
 })
 const remaining = computed(() => store.exercises.filter((e) => !covered.value.has(e)))
-const done = computed(() => store.exercises.filter((e) => doneToday.value.has(e)))
-const skipped = computed(() => store.exercises.filter((e) => covered.value.has(e) && !doneToday.value.has(e)))
+
+// Chips in training order: done ones plus "skipped" alternatives.
+const chips = computed(() =>
+  store.exercises
+    .filter((e) => covered.value.has(e))
+    .map((e) => ({ name: e, skipped: !doneToday.value.has(e) }))
+)
+const skippedCount = computed(() => chips.value.filter((c) => c.skipped).length)
+
+// Day progress by training slot (an either/or pair is one slot).
+const slotState = computed(() =>
+  store.slots.map((names) => (names.some((n) => doneToday.value.has(n)) ? 'done' : names.includes(name.value) ? 'current' : 'todo'))
+)
+const doneSlots = computed(() => slotState.value.filter((s) => s === 'done').length)
+const leftSlots = computed(() => store.slots.length - doneSlots.value)
+const currentSlot = computed(() => slotState.value.indexOf('current'))
 
 watch(
   remaining,
@@ -41,6 +55,12 @@ watch(
 
 const name = computed(() => form.custom.trim() || form.exercise)
 const last = computed(() => store.byExercise(name.value)[0])
+const short = (n: string) => splitName(n)[0].replace(/ Machine$/, '')
+
+const kicker = computed(() => {
+  if (!last.value) return 'New exercise'
+  return !form.custom && remaining.value.includes(name.value) ? 'Up next' : 'Extra'
+})
 
 // Pre-fill unit / per-dumbbell from the last time this exercise was logged.
 watch(last, (l) => {
@@ -49,17 +69,10 @@ watch(last, (l) => {
   form.perDumbbell = !!l.perDumbbell
 })
 
-const preview = computed(() => {
-  if (!form.weight) return ''
-  return form.unit === 'lbs' ? `≈ ${toKg(form.weight, 'lbs')} kg` : `≈ ${toLbs(form.weight, 'kg')} lbs`
-})
 const lastWhen = computed(() => {
   if (!last.value) return ''
-  const days = Math.round(
-    (new Date(form.date + 'T00:00:00').getTime() - new Date(last.value.date + 'T00:00:00').getTime()) / 86400000
-  )
-  const d = new Date(last.value.date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-  return days > 0 ? `${d} · ${days} day${days === 1 ? '' : 's'} ago` : d
+  const days = daysBetween(last.value.date, form.date)
+  return days > 0 ? `${fmtDay(last.value.date)} · ${days} day${days === 1 ? '' : 's'} ago` : fmtDay(last.value.date)
 })
 
 function useLast() {
@@ -72,7 +85,27 @@ function useLast() {
   if (l.reps) form.reps = l.reps
 }
 
+// Weight stepper. Empty weight shows last time's value as the placeholder; +/- start from it.
+const step = computed(() => (form.unit === 'lbs' ? 5 : form.perDumbbell ? 1 : 2.5))
+const placeholder = computed(() => (last.value && last.value.unit === form.unit ? last.value.weight : 0))
+function nudge(dir: 1 | -1) {
+  const base = form.weight ?? placeholder.value
+  form.weight = Math.max(0, Math.round((base + dir * step.value) * 10) / 10)
+}
+const weightChars = computed(() => String(form.weight ?? placeholder.value).length)
+const preview = computed(() => (form.weight ? `≈ ${convertedFull({ weight: form.weight, unit: form.unit })}` : ''))
+const vsLast = computed(() => {
+  const l = last.value
+  if (!form.weight || !l) return null
+  const diff = l.unit === form.unit ? form.weight - l.weight : kgOf({ weight: form.weight, unit: form.unit }) - kgOf(l)
+  const r = Math.round(diff * 10) / 10
+  const suffix = l.unit === form.unit ? '' : ' kg'
+  if (r === 0) return { text: 'same as last', up: false }
+  return { text: `${r > 0 ? '+' : '−'}${Math.abs(r)}${suffix} vs last`, up: r > 0 }
+})
+
 const saved = ref('')
+let savedTimer: ReturnType<typeof setTimeout> | undefined
 
 async function save() {
   if (!name.value || !form.weight) return
@@ -90,86 +123,318 @@ async function save() {
   saved.value = `Saved ${name.value}`
   form.weight = undefined
   form.custom = ''
-  setTimeout(() => (saved.value = ''), 2500)
+  clearTimeout(savedTimer)
+  savedTimer = setTimeout(() => (saved.value = ''), 2500)
 }
 
-const input = 'block w-full min-w-0 appearance-none rounded-lg bg-slate-900 border border-slate-700 px-3 py-2'
+// Picker sheet
+const picking = ref(false)
+const pickerRows = computed(() =>
+  store.slots
+    .map((names, i) => ({ n: i + 1, names: names.filter((x) => !covered.value.has(x)) }))
+    .filter((r) => r.names.length)
+)
+function pick(n: string) {
+  if (remaining.value.includes(n)) {
+    form.exercise = n
+    form.custom = ''
+  } else {
+    form.custom = n
+  }
+  form.weight = undefined
+  picking.value = false
+}
+
+// All done for the day (until an extra exercise is picked).
+const allDone = computed(() => !remaining.value.length && !form.custom)
+const dayStats = computed(() => {
+  const today = store.verified.filter((e) => e.date === form.date && e.source === 'logged')
+  let heavier = 0, matched = 0, lighter = 0
+  for (const e of today) {
+    const prev = store.byExercise(e.exercise).find((p) => p.date < form.date)
+    if (!prev) continue
+    const d = Math.round((kgOf(e) - kgOf(prev)) * 10) / 10
+    if (d > 0) heavier++
+    else if (d === 0) matched++
+    else lighter++
+  }
+  return {
+    exercises: new Set(today.map((e) => e.exercise)).size,
+    sets: today.reduce((n, e) => n + (e.sets ?? 0), 0),
+    heavier,
+    matched,
+    lighter
+  }
+})
+
+const segment = (s: string) =>
+  s === 'done'
+    ? 'bg-accent'
+    : s === 'current'
+      ? 'bg-neutral-700 shadow-[0_0_0_1px_theme(colors.accent.500)]'
+      : 'bg-neutral-900'
 </script>
 
 <template>
-  <form class="space-y-4" @submit.prevent="save">
-    <h1 class="text-2xl font-bold">Log a set</h1>
+  <div>
+    <!-- All-done glow behind the page -->
+    <div
+      v-if="allDone"
+      class="pointer-events-none fixed inset-0 bg-[radial-gradient(120%_60%_at_0%_20%,theme(colors.accent.900),transparent_70%)]"
+    />
 
-    <div class="grid grid-cols-2 gap-3">
-      <label class="min-w-0 text-sm text-slate-400">Date<input v-model="form.date" type="date" :class="input" /></label>
-      <label class="min-w-0 text-sm text-slate-400">Body weight (kg)
-        <input v-model.number="form.bodyWeightKg" type="number" step="0.1" inputmode="decimal" :class="input" />
-      </label>
-    </div>
+    <form class="relative flex flex-col pb-20" :class="allDone ? 'gap-[22px]' : 'gap-[18px]'" @submit.prevent="save">
+      <!-- Date + body weight -->
+      <div class="flex items-center justify-between gap-3">
+        <label class="relative flex min-h-11 items-center gap-2">
+          <span class="text-[22px] font-medium">{{ relativeDay(form.date) }}</span>
+          <span class="text-sm text-neutral-400">{{ fmtDay(form.date) }}</span>
+          <i class="ph ph-caret-down text-neutral-500" />
+          <input v-model="form.date" type="date" required aria-label="Date" class="absolute inset-0 opacity-0" />
+        </label>
+        <label class="tnum flex h-10 items-center gap-1.5 rounded-md bg-surface px-3 text-sm shadow-sm focus-within:shadow-[0_0_0_1px_theme(colors.accent.DEFAULT)]">
+          <i class="ph ph-person-simple text-neutral-400" />
+          <input
+            v-model.number="form.bodyWeightKg"
+            type="number"
+            step="0.1"
+            inputmode="decimal"
+            aria-label="Body weight in kg"
+            placeholder="—"
+            class="w-10 bg-transparent text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+          />kg
+        </label>
+      </div>
 
-    <label class="block text-sm text-slate-400">
-      Exercise
-      <span class="float-right text-emerald-400">{{ remaining.length }} left · {{ done.length }} done</span>
-      <select v-model="form.exercise" :disabled="!remaining.length" :class="input">
-        <option v-if="!remaining.length" value="">All done for this day ✓</option>
-        <option v-for="e in remaining" :key="e" :value="e">{{ e }}</option>
-      </select>
-    </label>
-    <label class="block text-sm text-slate-400">…or a new exercise
-      <input v-model="form.custom" placeholder="e.g. Calf Raise" :class="input" />
-    </label>
+      <!-- Day progress -->
+      <div class="flex flex-col gap-2">
+        <div class="grid gap-1" :style="{ gridTemplateColumns: `repeat(${store.slots.length}, 1fr)` }">
+          <span
+            v-for="(s, i) in slotState"
+            :key="i"
+            class="h-1.5 rounded-[3px]"
+            :class="[segment(s), allDone && 'shadow-[0_0_10px_theme(colors.accent.600)]']"
+          />
+        </div>
+        <div v-if="!allDone" class="flex justify-between text-[13px] text-neutral-400">
+          <span>
+            <span class="font-medium text-accent-300">{{ doneSlots }} done</span> · {{ leftSlots }} left<template v-if="skippedCount"> · {{ skippedCount }} skipped</template>
+          </span>
+          <span>{{ currentSlot >= 0 ? `${currentSlot + 1} of ${store.slots.length}` : 'Extra' }}</span>
+        </div>
+      </div>
 
-    <section v-if="last" class="rounded-xl border border-slate-700 bg-slate-900 p-3">
-      <p class="text-xs uppercase tracking-wide text-slate-500">Last time · {{ lastWhen }}</p>
-      <p class="mt-1 text-lg text-emerald-400">
-        {{ last.weight }} {{ last.unit }}
-        <span class="text-slate-400">≈ {{ last.unit === 'lbs' ? toKg(last.weight, 'lbs') + ' kg' : toLbs(last.weight, 'kg') + ' lbs' }}</span>
-        <span v-if="last.perDumbbell" class="text-xs text-slate-400"> each</span>
-      </p>
-      <p v-if="last.sets && last.reps" class="text-sm text-slate-300">{{ last.sets }} sets × {{ last.reps }} reps</p>
-      <p v-else class="text-sm text-slate-500">Baseline weight, no sets or reps recorded</p>
-      <button type="button" class="mt-2 rounded-lg bg-slate-800 px-3 py-1.5 text-sm active:bg-slate-700" @click="useLast">
-        Continue from this
+      <!-- ========== All done ========== -->
+      <template v-if="allDone">
+        <div class="flex flex-col gap-3 pb-2 pt-7">
+          <span class="flex size-[72px] items-center justify-center rounded-full text-4xl text-accent-300 shadow-[inset_0_0_0_2px_theme(colors.accent.DEFAULT),0_0_40px_-4px_theme(colors.accent.600)]">
+            <i class="ph-bold ph-check" />
+          </span>
+          <h1 class="text-[34px] font-medium leading-[1.1] tracking-[-0.02em]">All done for this day ✓</h1>
+          <span class="text-base leading-[1.45] text-neutral-300">{{ dayStats.exercises }} exercises · {{ dayStats.sets }} sets</span>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="card flex flex-col gap-1 p-3.5">
+            <span class="tnum text-[32px] font-medium text-accent-300">{{ dayStats.heavier }}</span>
+            <span class="label">heavier than last time</span>
+          </div>
+          <div class="card flex flex-col gap-1 p-3.5">
+            <span class="tnum text-[32px] font-medium">{{ dayStats.matched }}</span>
+            <span class="label">matched last time</span>
+          </div>
+          <div v-if="dayStats.lighter" class="card flex flex-col gap-1 p-3.5">
+            <span class="tnum text-[32px] font-medium text-neutral-300">{{ dayStats.lighter }}</span>
+            <span class="label">lighter than last time</span>
+          </div>
+        </div>
+      </template>
+
+      <!-- ========== Logging ========== -->
+      <template v-else>
+        <!-- Exercise + last time -->
+        <div class="card flex flex-col gap-4 p-[18px]">
+          <div class="flex items-start justify-between gap-3">
+            <div class="flex min-w-0 flex-col gap-1">
+              <span class="text-xs font-medium uppercase tracking-[0.06em] text-accent-400">{{ kicker }}</span>
+              <span class="text-[26px] font-medium leading-[1.15] tracking-[-0.01em]">{{ name }}</span>
+            </div>
+            <button
+              type="button"
+              aria-label="Change exercise"
+              class="flex size-11 flex-none items-center justify-center rounded-md text-xl text-neutral-300 shadow-sm active:bg-neutral-900"
+              @click="picking = true"
+            >
+              <i class="ph ph-arrows-down-up" />
+            </button>
+          </div>
+
+          <div v-if="last" class="flex items-end justify-between gap-3 pt-3.5 shadow-[0_-1px_0_theme(colors.neutral.800)]">
+            <div class="flex flex-col gap-1">
+              <span class="label">Last time · {{ lastWhen }}</span>
+              <span class="tnum text-[22px] font-medium">
+                {{ last.weight }} {{ last.unit }}<span v-if="last.perDumbbell" class="text-[15px] font-normal text-neutral-400"> each</span>
+                <span class="text-[15px] font-normal text-neutral-400"> ≈ {{ convertedFull(last) }}</span>
+              </span>
+              <span v-if="last.sets && last.reps" class="tnum text-sm text-neutral-300">{{ last.sets }} × {{ last.reps }}</span>
+              <span v-else class="text-sm text-neutral-400">Baseline, no sets/reps</span>
+            </div>
+            <button type="button" class="btn-outline h-11 flex-none px-3.5 text-sm" @click="useLast">
+              <i class="ph ph-arrow-u-down-left" />Continue
+            </button>
+          </div>
+          <div v-else class="flex items-center gap-2.5 rounded-md p-3 text-sm leading-[1.4] text-neutral-300 shadow-[inset_0_0_0_1px_theme(colors.neutral.800)]">
+            <i class="ph ph-sparkle text-xl text-accent-400" />No previous log. Today's weight becomes the one to beat.
+          </div>
+        </div>
+
+        <!-- Weight -->
+        <div class="flex flex-col gap-2.5">
+          <div class="flex items-center justify-between">
+            <span class="label">Weight</span>
+            <div class="flex rounded-md bg-neutral-900 p-[3px]" role="radiogroup" aria-label="Unit">
+              <button
+                v-for="u in (['lbs', 'kg'] as Unit[])"
+                :key="u"
+                type="button"
+                role="radio"
+                :aria-checked="form.unit === u"
+                class="flex h-[34px] w-[52px] items-center justify-center rounded-[6px] text-sm"
+                :class="form.unit === u ? 'bg-accent-800 font-medium text-accent-200' : 'text-neutral-400'"
+                @click="form.unit = u"
+              >
+                {{ u }}
+              </button>
+            </div>
+          </div>
+          <div class="flex items-center justify-between gap-3">
+            <button
+              type="button"
+              aria-label="Decrease weight"
+              class="card flex size-16 flex-none items-center justify-center text-[26px] active:bg-neutral-900"
+              :class="!form.weight && !placeholder && 'text-neutral-600'"
+              @click="nudge(-1)"
+            >
+              <i class="ph ph-minus" />
+            </button>
+            <div class="flex min-w-0 flex-col items-center">
+              <label class="tnum flex items-baseline text-[68px] font-medium leading-none tracking-[-0.03em]">
+                <input
+                  v-model.number="form.weight"
+                  type="number"
+                  step="any"
+                  inputmode="decimal"
+                  aria-label="Weight"
+                  :placeholder="String(placeholder)"
+                  class="bg-transparent text-center placeholder:text-neutral-700 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+                  :style="{ width: `${weightChars * 0.62 + 0.1}em` }"
+                />
+                <span class="ml-1 text-xl font-normal tracking-normal" :class="form.weight ? 'text-neutral-400' : 'text-neutral-700'">{{ form.unit }}</span>
+              </label>
+              <span class="tnum mt-1.5 text-sm" :class="form.weight ? 'text-neutral-400' : 'text-neutral-500'">
+                <template v-if="form.weight">
+                  {{ preview }}<template v-if="vsLast"> · <span :class="vsLast.up && 'text-accent-300'">{{ vsLast.text }}</span></template>
+                </template>
+                <template v-else>Tap the number to type</template>
+              </span>
+            </div>
+            <button
+              type="button"
+              aria-label="Increase weight"
+              class="card flex size-16 flex-none items-center justify-center text-[26px] active:bg-neutral-900"
+              @click="nudge(1)"
+            >
+              <i class="ph ph-plus" />
+            </button>
+          </div>
+        </div>
+
+        <!-- Sets / reps -->
+        <div class="grid grid-cols-2 gap-3">
+          <MiniStepper v-model="form.sets" label="Sets" />
+          <MiniStepper v-model="form.reps" label="Reps" />
+        </div>
+
+        <!-- Per dumbbell -->
+        <label class="flex min-h-12 cursor-pointer items-center justify-between">
+          <span class="text-[15px]">Weight is per dumbbell</span>
+          <input v-model="form.perDumbbell" type="checkbox" class="peer sr-only" />
+          <span
+            class="relative h-8 w-[52px] rounded-2xl transition-colors peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent"
+            :class="form.perDumbbell ? 'bg-accent-700' : 'bg-neutral-800'"
+          >
+            <span
+              class="absolute left-[3px] top-[3px] size-[26px] rounded-[13px] transition-transform"
+              :class="form.perDumbbell ? 'translate-x-5 bg-accent-200' : 'bg-neutral-400'"
+            />
+          </span>
+        </label>
+      </template>
+
+      <!-- Done on this date -->
+      <div v-if="chips.length" class="flex flex-col gap-2.5">
+        <span class="label">Done on this date</span>
+        <ul class="flex flex-wrap gap-1.5">
+          <li v-for="c in chips" :key="c.name">
+            <span v-if="c.skipped" class="chip text-neutral-400 shadow-[inset_0_0_0_1px_theme(colors.neutral.700)]">skipped · {{ short(c.name) }}</span>
+            <span v-else class="chip bg-accent-900 text-accent-200"><i class="ph-bold ph-check" />{{ short(c.name) }}</span>
+          </li>
+        </ul>
+      </div>
+
+      <button
+        v-if="allDone"
+        type="button"
+        class="flex h-[52px] items-center justify-center gap-2 rounded-lg text-[15px] text-neutral-200 shadow-[inset_0_0_0_1px_theme(colors.neutral.700)] active:bg-neutral-900"
+        @click="picking = true"
+      >
+        <i class="ph ph-plus" />Log an extra exercise
       </button>
-    </section>
-    <p v-else-if="name" class="rounded-xl bg-slate-900 p-3 text-sm text-slate-500">No previous log for this exercise.</p>
 
-    <div class="grid grid-cols-3 gap-3">
-      <label class="col-span-2 min-w-0 text-sm text-slate-400">Weight
-        <input
-          v-model.number="form.weight"
-          type="number"
-          step="0.5"
-          inputmode="decimal"
-          required
-          :placeholder="last ? `last: ${last.weight} ${last.unit}` : ''"
-          :class="input"
-        />
-      </label>
-      <label class="min-w-0 text-sm text-slate-400">Unit
-        <select v-model="form.unit" :class="input"><option>lbs</option><option>kg</option></select>
-      </label>
-    </div>
-    <p v-if="preview" class="-mt-2 text-sm text-emerald-400">{{ preview }}</p>
+      <!-- Saved toast + sticky Save, in the thumb zone above the tab bar -->
+      <template v-if="!allDone">
+        <Transition
+          enter-from-class="translate-y-2 opacity-0"
+          leave-to-class="opacity-0"
+          enter-active-class="transition duration-200"
+          leave-active-class="transition duration-300"
+        >
+          <div
+            v-if="saved"
+            role="status"
+            class="fixed inset-x-5 z-20 mx-auto flex h-11 max-w-[calc(42rem-40px)] items-center gap-2 rounded-md bg-neutral-900 px-3.5 text-sm shadow-md"
+            style="bottom: calc(var(--tabbar) + 88px)"
+          >
+            <i class="ph-fill ph-check-circle text-lg text-accent-400" />{{ saved }}
+          </div>
+        </Transition>
+        <div class="fixed inset-x-0 z-20 bg-bg" style="bottom: var(--tabbar)">
+          <div class="mx-auto max-w-2xl px-5 py-3">
+            <button
+              :disabled="!form.weight"
+              class="flex h-14 w-full items-center justify-center gap-2 rounded-lg text-[17px] font-medium"
+              :class="
+                form.weight
+                  ? 'bg-accent-900 text-accent-100 shadow-[inset_0_0_0_1.5px_theme(colors.accent.DEFAULT),0_0_24px_-6px_theme(colors.accent.600)] active:bg-accent-800'
+                  : 'text-neutral-500 shadow-[inset_0_0_0_1.5px_theme(colors.neutral.700)]'
+              "
+            >
+              <i class="ph-bold ph-check" />
+              <span class="truncate">{{ form.weight ? `Save ${short(name)}` : 'Enter a weight to save' }}</span>
+            </button>
+          </div>
+        </div>
+      </template>
+    </form>
 
-    <div class="grid grid-cols-2 gap-3">
-      <label class="min-w-0 text-sm text-slate-400">Sets<input v-model.number="form.sets" type="number" inputmode="numeric" :class="input" /></label>
-      <label class="min-w-0 text-sm text-slate-400">Reps<input v-model.number="form.reps" type="number" inputmode="numeric" :class="input" /></label>
-    </div>
-
-    <label class="flex items-center gap-2 text-sm text-slate-400">
-      <input v-model="form.perDumbbell" type="checkbox" /> Weight is per dumbbell
-    </label>
-
-    <button class="w-full rounded-lg bg-emerald-600 py-3 font-semibold active:bg-emerald-700">Save</button>
-    <p v-if="saved" class="text-center text-emerald-400">{{ saved }}</p>
-
-    <section v-if="done.length" class="rounded-xl bg-slate-900 p-3">
-      <p class="mb-2 text-sm text-slate-400">Done on this date</p>
-      <ul class="flex flex-wrap gap-2">
-        <li v-for="e in done" :key="e" class="rounded-full bg-emerald-900 px-3 py-1 text-xs text-emerald-300">✓ {{ e }}</li>
-        <li v-for="e in skipped" :key="e" class="rounded-full bg-slate-800 px-3 py-1 text-xs text-slate-400">skipped · {{ e }}</li>
-      </ul>
-    </section>
-  </form>
+    <ExercisePicker
+      v-if="picking"
+      :rows="pickerRows"
+      :selected="name"
+      :done-count="doneSlots"
+      :left-count="leftSlots"
+      :last-of="(n: string) => store.byExercise(n)[0]"
+      @close="picking = false"
+      @select="pick"
+    />
+  </div>
 </template>
