@@ -2,16 +2,28 @@ import { defineStore } from 'pinia'
 import type { Entry } from '~/utils/db'
 import { SEED_ENTRIES } from '~/utils/seed'
 import { toKg } from '~/utils/units'
+import { ALTERNATIVE_GROUPS } from '~/utils/exercises'
 
 export const useWorkoutStore = defineStore('workout', {
   state: () => ({ entries: [] as Entry[], ready: false }),
 
   getters: {
     // Original order of first appearance (assessment order), then newly added exercises.
-    exercises: (s) =>
-      Array.from(
+    exercises: (s) => {
+      const list = Array.from(
         new Set([...s.entries].sort((a, b) => (a.id ?? 0) - (b.id ?? 0)).map((e) => e.exercise))
-      ),
+      )
+      // Make sure every alternative shows up, right after its sibling.
+      for (const group of ALTERNATIVE_GROUPS) {
+        const present = group.filter((n) => list.includes(n))
+        if (!present.length) continue
+        let at = Math.max(...present.map((n) => list.indexOf(n)))
+        for (const n of group) {
+          if (!list.includes(n)) list.splice(++at, 0, n)
+        }
+      }
+      return list
+    },
 
     // Verified entries only, newest first.
     verified: (s) =>

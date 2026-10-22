@@ -21,8 +21,15 @@ const form = reactive({
 const doneToday = computed(
   () => new Set(store.verified.filter((e) => e.date === form.date).map((e) => e.exercise))
 )
-const remaining = computed(() => store.exercises.filter((e) => !doneToday.value.has(e)))
+// Alternatives of something already done today are also off the list (you do one OR the other).
+const covered = computed(() => {
+  const set = new Set(doneToday.value)
+  for (const e of doneToday.value) alternativesOf(e).forEach((a) => set.add(a))
+  return set
+})
+const remaining = computed(() => store.exercises.filter((e) => !covered.value.has(e)))
 const done = computed(() => store.exercises.filter((e) => doneToday.value.has(e)))
+const skipped = computed(() => store.exercises.filter((e) => covered.value.has(e) && !doneToday.value.has(e)))
 
 watch(
   remaining,
@@ -161,6 +168,7 @@ const input = 'block w-full min-w-0 appearance-none rounded-lg bg-slate-900 bord
       <p class="mb-2 text-sm text-slate-400">Done on this date</p>
       <ul class="flex flex-wrap gap-2">
         <li v-for="e in done" :key="e" class="rounded-full bg-emerald-900 px-3 py-1 text-xs text-emerald-300">✓ {{ e }}</li>
+        <li v-for="e in skipped" :key="e" class="rounded-full bg-slate-800 px-3 py-1 text-xs text-slate-400">skipped · {{ e }}</li>
       </ul>
     </section>
   </form>
