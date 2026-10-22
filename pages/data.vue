@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Capacitor } from '@capacitor/core'
 import { parseBackup } from '~/stores/workout'
 import { todayISO } from '~/utils/format'
 import { useDietStore } from '~/stores/diet'
@@ -9,11 +10,23 @@ const status = ref<{ ok: boolean; text: string; file?: string } | null>(null)
 const pending = ref<{ file: string; json: string; meals: boolean } | null>(null)
 const pendingHasMeals = computed(() => !!pending.value?.meals)
 
-function download(name: string, text: string, type: string) {
-  const url = URL.createObjectURL(new Blob([text], { type }))
-  const a = Object.assign(document.createElement('a'), { href: url, download: name })
-  a.click()
-  URL.revokeObjectURL(url)
+async function download(name: string, text: string, type: string) {
+  if (Capacitor.isNativePlatform()) {
+    // The iOS web view ignores <a download>, so write the file and open the share sheet.
+    const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem')
+    const { Share } = await import('@capacitor/share')
+    const { uri } = await Filesystem.writeFile({ path: name, data: text, directory: Directory.Cache, encoding: Encoding.UTF8 })
+    try {
+      await Share.share({ title: name, files: [uri] })
+    } catch {
+      return // share sheet dismissed
+    }
+  } else {
+    const url = URL.createObjectURL(new Blob([text], { type }))
+    const a = Object.assign(document.createElement('a'), { href: url, download: name })
+    a.click()
+    URL.revokeObjectURL(url)
+  }
   status.value = { ok: true, text: `${type.includes('json') ? 'Backup' : 'Table'} saved · ${name}` }
 }
 
