@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Unit } from '~/utils/units'
 import type { Entry } from '~/utils/db'
-import { alternativesOf } from '~/utils/exercises'
+import { alternativesOf, DAY_LABELS, slotsOf, type DayType } from '~/utils/exercises'
 import { convertedFull, daysBetween, fmtDay, kgOf, relativeDay, splitName, todayISO } from '~/utils/format'
 
 const store = useWorkoutStore()
@@ -18,6 +18,15 @@ const form = reactive({
   perDumbbell: false
 })
 
+// Kind of day for the selected date: what was picked for it, else full body, or the next
+// split day in the rotation when the routine is push/pull/legs.
+const dayType = computed<DayType>(
+  () => store.dayTypes[form.date] ?? (store.mode === 'full' ? 'full' : store.nextSplitDay(form.date))
+)
+const plan = computed(() => store.planFor(dayType.value))
+const planSlots = computed(() => slotsOf(plan.value))
+const dayOptions = Object.keys(DAY_LABELS) as DayType[]
+
 // Exercises already logged on the selected day are hidden, so the list = what is left to do.
 const doneToday = computed(
   () => new Set(store.verified.filter((e) => e.date === form.date).map((e) => e.exercise))
@@ -28,7 +37,7 @@ const covered = computed(() => {
   for (const e of doneToday.value) alternativesOf(e).forEach((a) => set.add(a))
   return set
 })
-const remaining = computed(() => store.exercises.filter((e) => !covered.value.has(e)))
+const remaining = computed(() => plan.value.filter((e) => !covered.value.has(e)))
 
 // Chips in training order: done ones plus "skipped" alternatives.
 const chips = computed(() =>
@@ -40,10 +49,10 @@ const skippedCount = computed(() => chips.value.filter((c) => c.skipped).length)
 
 // Day progress by training slot (an either/or pair is one slot).
 const slotState = computed(() =>
-  store.slots.map((names) => (names.some((n) => doneToday.value.has(n)) ? 'done' : names.includes(name.value) ? 'current' : 'todo'))
+  planSlots.value.map((names) => (names.some((n) => doneToday.value.has(n)) ? 'done' : names.includes(name.value) ? 'current' : 'todo'))
 )
 const doneSlots = computed(() => slotState.value.filter((s) => s === 'done').length)
-const leftSlots = computed(() => store.slots.length - doneSlots.value)
+const leftSlots = computed(() => planSlots.value.length - doneSlots.value)
 const currentSlot = computed(() => slotState.value.indexOf('current'))
 
 watch(() => form.date, () => editing.value && stopEdit())
@@ -162,6 +171,9 @@ async function save() {
     stopEdit()
     return
   }
+  // A brand-new exercise on a split day joins that day's list.
+  if (dayType.value !== 'full' && !store.exercises.includes(name.value)) await store.addToSplit(dayType.value, name.value)
+  if (!store.dayTypes[form.date]) await store.setDayType(form.date, dayType.value)
   await store.add({
     date: form.date,
     exercise: name.value,
@@ -181,7 +193,7 @@ async function save() {
 // Picker sheet
 const picking = ref(false)
 const pickerRows = computed(() =>
-  store.slots
+  planSlots.value
     .map((names, i) => ({ n: i + 1, names: names.filter((x) => !covered.value.has(x)) }))
     .filter((r) => r.names.length)
 )
@@ -258,9 +270,25 @@ const segment = (s: string) =>
         </label>
       </div>
 
+      <!-- Kind of day -->
+      <div class="grid grid-cols-4 rounded-md bg-neutral-900 p-[3px]" role="radiogroup" aria-label="Workout">
+        <button
+          v-for="t in dayOptions"
+          :key="t"
+          type="button"
+          role="radio"
+          :aria-checked="dayType === t"
+          class="flex h-[34px] items-center justify-center rounded-[6px] text-sm"
+          :class="dayType === t ? 'bg-accent-800 font-medium text-accent-200' : 'text-neutral-400'"
+          @click="store.setDayType(form.date, t)"
+        >
+          {{ DAY_LABELS[t] }}
+        </button>
+      </div>
+
       <!-- Day progress -->
       <div class="flex flex-col gap-2">
-        <div class="grid gap-1" :style="{ gridTemplateColumns: `repeat(${store.slots.length}, 1fr)` }">
+        <div class="grid gap-1" :style="{ gridTemplateColumns: `repeat(${planSlots.length}, 1fr)` }">
           <span
             v-for="(s, i) in slotState"
             :key="i"
@@ -272,7 +300,7 @@ const segment = (s: string) =>
           <span>
             <span class="font-medium text-accent-300">{{ doneSlots }} done</span> · {{ leftSlots }} left<template v-if="skippedCount"> · {{ skippedCount }} skipped</template>
           </span>
-          <span>{{ currentSlot >= 0 ? `${currentSlot + 1} of ${store.slots.length}` : 'Extra' }}</span>
+          <span>{{ currentSlot >= 0 ? `${currentSlot + 1} of ${planSlots.length}` : 'Extra' }}</span>
         </div>
       </div>
 
