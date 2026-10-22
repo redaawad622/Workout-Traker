@@ -4,7 +4,8 @@ Local-first Nuxt 3 SPA/PWA (Vue 3, Pinia, Dexie/IndexedDB, Tailwind). Dark "Noct
 
     npm install
     npm run dev        # http://localhost:3000
-    npm run build      # static output in .output/public
+    npm run build      # Vercel build: static pages + the Ask Claude function
+    npm run generate   # fully static output in .output/public
 
 Seeded from the exported chat: 3 Oct baseline, 22 Oct session. The 5 Oct update has no confirmed
 date, so it is stored as "unverified" and excluded from progress until you confirm it in the app.
