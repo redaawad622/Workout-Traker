@@ -16,9 +16,33 @@ export const SPLIT_DAYS: SplitDay[] = ['push', 'pull', 'legs']
 export const DAY_LABELS: Record<DayType, string> = { full: 'Full body', push: 'Push', pull: 'Pull', legs: 'Legs' }
 
 export const DEFAULT_SPLIT: Record<SplitDay, string[]> = {
-  push: ['Chest Press Machine', 'Incline Press Machine', 'Shoulder Press Machine', 'Lateral Raise — Dumbbells', 'Triceps Rope Pushdown'],
-  pull: ['Lat Pulldown', 'Low Row — Narrow Grip', 'Cable Biceps Curl'],
-  legs: ['Leg Extension', 'Leg Curl', 'Seated Leg Curl']
+  push: [
+    'Chest Press Machine',
+    'Incline Press Machine',
+    'Pec Deck Fly',
+    'Shoulder Press Machine',
+    'Lateral Raise — Dumbbells',
+    'Triceps Rope Pushdown',
+    'Overhead Triceps Extension — Cable'
+  ],
+  pull: [
+    'Lat Pulldown',
+    'Low Row — Narrow Grip',
+    'Seated Cable Row — Wide Grip',
+    'Face Pull',
+    'Rear Delt Fly — Machine',
+    'Cable Biceps Curl',
+    'Hammer Curl — Dumbbells'
+  ],
+  legs: [
+    'Leg Press',
+    'Romanian Deadlift — Dumbbells',
+    'Leg Extension',
+    'Leg Curl',
+    'Seated Leg Curl',
+    'Hip Thrust Machine',
+    'Calf Raise'
+  ]
 }
 
 // Group a list of exercises into training slots: alternatives (either/or) share one slot.
