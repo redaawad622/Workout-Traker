@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { convertedFull, convertedShort, fixed1, fmtDay, fmtShort, kgOf, todayISO } from '~/utils/format'
+import { DAY_LABELS } from '~/utils/exercises'
 const store = useWorkoutStore()
 
 const dayHeading = (d: string) => (d === todayISO() ? `Today · ${fmtDay(d)}` : fmtDay(d))
@@ -27,7 +28,10 @@ const dayHeading = (d: string) => (d === todayISO() ? `Today · ${fmtDay(d)}` : 
     <!-- Sessions, newest first -->
     <section v-for="s in store.sessions" :key="s.date" class="flex flex-col gap-2">
       <div class="flex items-baseline justify-between">
-        <h2 class="text-[15px] font-medium">{{ dayHeading(s.date) }}</h2>
+        <h2 class="text-[15px] font-medium">
+          {{ dayHeading(s.date) }}
+          <span v-if="store.dayTypes[s.date]" class="ml-1.5 text-[13px] font-normal text-accent-300">{{ DAY_LABELS[store.dayTypes[s.date]] }}</span>
+        </h2>
         <span v-if="s.bodyWeightKg" class="tnum text-[13px] text-neutral-400">{{ s.bodyWeightKg }} kg body</span>
       </div>
       <ul class="card tnum px-3.5">

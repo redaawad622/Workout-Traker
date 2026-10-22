@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import type { Entry } from '~/utils/db'
 import { SEED_ENTRIES } from '~/utils/seed'
 import { toKg } from '~/utils/units'
-import { ALTERNATIVE_GROUPS } from '~/utils/exercises'
+import { ALTERNATIVE_GROUPS, DEFAULT_SPLIT, SPLIT_DAYS, slotsOf, type DayType, type SplitDay } from '~/utils/exercises'
 
 const SOURCES = ['assessment', 'logged', 'unverified']
 
@@ -25,7 +25,16 @@ export function parseBackup(json: string): Entry[] {
 }
 
 export const useWorkoutStore = defineStore('workout', {
-  state: () => ({ entries: [] as Entry[], ready: false }),
+  state: () => ({
+    entries: [] as Entry[],
+    ready: false,
+    // Routine kept in the meta table (no schema change): which way new days default to,
+    // and the push/pull/legs lists.
+    mode: 'full' as 'full' | 'split',
+    split: structuredClone(DEFAULT_SPLIT) as Record<SplitDay, string[]>,
+    // Which kind of day each date was trained as, keyed by YYYY-MM-DD (meta keys "day:<date>").
+    dayTypes: {} as Record<string, DayType>
+  }),
 
   getters: {
     // Original order of first appearance (assessment order), then newly added exercises.
@@ -47,14 +56,22 @@ export const useWorkoutStore = defineStore('workout', {
 
     // Training slots in order: alternatives (either/or) share one slot.
     slots(): string[][] {
-      const slots: string[][] = []
-      for (const name of this.exercises) {
-        const group = ALTERNATIVE_GROUPS.find((g) => g.includes(name))
-        const existing = group && slots.find((s) => group.includes(s[0]))
-        if (existing) existing.push(name)
-        else slots.push([name])
+      return slotsOf(this.exercises)
+    },
+
+    // Exercises planned for a kind of day: full body = everything, in training order.
+    planFor() {
+      return (type: DayType) => (type === 'full' ? this.exercises : this.split[type])
+    },
+
+    // Split day that follows the most recent logged split day before `date`.
+    nextSplitDay() {
+      return (date: string): SplitDay => {
+        const prev = this.sessions.find((s) => s.date < date && this.dayTypes[s.date] && this.dayTypes[s.date] !== 'full')
+        if (!prev) return SPLIT_DAYS[0]
+        const i = SPLIT_DAYS.indexOf(this.dayTypes[prev.date] as SplitDay)
+        return SPLIT_DAYS[(i + 1) % SPLIT_DAYS.length]
       }
-      return slots
     },
 
     // Verified entries only, newest first.
@@ -120,12 +137,36 @@ export const useWorkoutStore = defineStore('workout', {
         await db.meta.put({ key: 'seeded', value: true })
       }
       this.entries = await db.entries.toArray()
+      const routine = (await db.meta.get('routine'))?.value as { mode?: 'full' | 'split'; split?: Record<SplitDay, string[]> } | undefined
+      if (routine?.mode) this.mode = routine.mode
+      if (routine?.split) Object.assign(this.split, routine.split)
+      for (const m of await db.meta.where('key').startsWith('day:').toArray()) {
+        this.dayTypes[m.key.slice(4)] = m.value as DayType
+      }
       this.ready = true
     },
 
     async add(entry: Entry) {
       const id = await useDb().entries.add(entry)
       this.entries.push({ ...entry, id })
+    },
+
+    async saveRoutine() {
+      await useDb().meta.put({ key: 'routine', value: { mode: this.mode, split: structuredClone(toRaw(this.split)) } })
+    },
+
+    // Pick the kind of day for a date. Also becomes the default for new days.
+    async setDayType(date: string, type: DayType) {
+      this.dayTypes[date] = type
+      this.mode = type === 'full' ? 'full' : 'split'
+      await useDb().meta.put({ key: `day:${date}`, value: type })
+      await this.saveRoutine()
+    },
+
+    async addToSplit(day: SplitDay, exercise: string) {
+      if (this.split[day].includes(exercise)) return
+      this.split[day].push(exercise)
+      await this.saveRoutine()
     },
 
     async remove(id: number) {
