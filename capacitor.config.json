@@ -1,0 +1,7 @@
+{
+  "appId": "com.redaawad.workoutlog",
+  "appName": "Workout Log",
+  "webDir": ".output/public",
+  "backgroundColor": "#161826",
+  "ios": { "contentInset": "never" }
+}
