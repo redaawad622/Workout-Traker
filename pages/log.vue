@@ -46,6 +46,25 @@ const preview = computed(() => {
   if (!form.weight) return ''
   return form.unit === 'lbs' ? `≈ ${toKg(form.weight, 'lbs')} kg` : `≈ ${toLbs(form.weight, 'kg')} lbs`
 })
+const lastWhen = computed(() => {
+  if (!last.value) return ''
+  const days = Math.round(
+    (new Date(form.date + 'T00:00:00').getTime() - new Date(last.value.date + 'T00:00:00').getTime()) / 86400000
+  )
+  const d = new Date(last.value.date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  return days > 0 ? `${d} · ${days} day${days === 1 ? '' : 's'} ago` : d
+})
+
+function useLast() {
+  const l = last.value
+  if (!l) return
+  form.weight = l.weight
+  form.unit = l.unit
+  form.perDumbbell = !!l.perDumbbell
+  if (l.sets) form.sets = l.sets
+  if (l.reps) form.reps = l.reps
+}
+
 const saved = ref('')
 
 async function save() {
@@ -92,6 +111,21 @@ const input = 'block w-full min-w-0 appearance-none rounded-lg bg-slate-900 bord
     <label class="block text-sm text-slate-400">…or a new exercise
       <input v-model="form.custom" placeholder="e.g. Calf Raise" :class="input" />
     </label>
+
+    <section v-if="last" class="rounded-xl border border-slate-700 bg-slate-900 p-3">
+      <p class="text-xs uppercase tracking-wide text-slate-500">Last time · {{ lastWhen }}</p>
+      <p class="mt-1 text-lg text-emerald-400">
+        {{ last.weight }} {{ last.unit }}
+        <span class="text-slate-400">≈ {{ last.unit === 'lbs' ? toKg(last.weight, 'lbs') + ' kg' : toLbs(last.weight, 'kg') + ' lbs' }}</span>
+        <span v-if="last.perDumbbell" class="text-xs text-slate-400"> each</span>
+      </p>
+      <p v-if="last.sets && last.reps" class="text-sm text-slate-300">{{ last.sets }} sets × {{ last.reps }} reps</p>
+      <p v-else class="text-sm text-slate-500">Baseline weight, no sets or reps recorded</p>
+      <button type="button" class="mt-2 rounded-lg bg-slate-800 px-3 py-1.5 text-sm active:bg-slate-700" @click="useLast">
+        Continue from this
+      </button>
+    </section>
+    <p v-else-if="name" class="rounded-xl bg-slate-900 p-3 text-sm text-slate-500">No previous log for this exercise.</p>
 
     <div class="grid grid-cols-3 gap-3">
       <label class="col-span-2 min-w-0 text-sm text-slate-400">Weight
