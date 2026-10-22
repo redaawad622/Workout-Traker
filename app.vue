@@ -1,9 +1,16 @@
 <script setup lang="ts">
+import { useDietStore } from '~/stores/diet'
+
 const store = useWorkoutStore()
-onMounted(() => store.load())
+const diet = useDietStore()
+onMounted(async () => {
+  await store.load()
+  await diet.load(store.latestBodyWeight)
+})
 const links = [
   { to: '/', label: 'History', icon: 'clock-counter-clockwise' },
   { to: '/log', label: 'Log', icon: 'plus-circle' },
+  { to: '/diet', label: 'Diet', icon: 'fork-knife' },
   { to: '/progress', label: 'Progress', icon: 'chart-line-up' },
   { to: '/data', label: 'Data', icon: 'database' }
 ]
@@ -21,7 +28,7 @@ const isActive = (to: string) => (to === '/' ? route.path === '/' : route.path.s
       class="fixed inset-x-0 bottom-0 z-30 bg-bg shadow-[0_-1px_0_theme(colors.neutral.900)]"
       style="padding-bottom: env(safe-area-inset-bottom)"
     >
-      <ul class="mx-auto grid h-[49px] max-w-2xl grid-cols-4">
+      <ul class="mx-auto grid h-[49px] max-w-2xl grid-cols-5">
         <li v-for="l in links" :key="l.to">
           <NuxtLink
             :to="l.to"
