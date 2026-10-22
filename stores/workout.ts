@@ -7,7 +7,11 @@ export const useWorkoutStore = defineStore('workout', {
   state: () => ({ entries: [] as Entry[], ready: false }),
 
   getters: {
-    exercises: (s) => Array.from(new Set(s.entries.map((e) => e.exercise))).sort(),
+    // Original order of first appearance (assessment order), then newly added exercises.
+    exercises: (s) =>
+      Array.from(
+        new Set([...s.entries].sort((a, b) => (a.id ?? 0) - (b.id ?? 0)).map((e) => e.exercise))
+      ),
 
     // Verified entries only, newest first.
     verified: (s) =>
@@ -20,6 +24,15 @@ export const useWorkoutStore = defineStore('workout', {
     // Initial assessment in the original order the exercises were recorded.
     assessment: (s) =>
       s.entries.filter((e) => e.source === 'assessment').sort((a, b) => (a.id ?? 0) - (b.id ?? 0)),
+
+    // All exercise names in original order (assessment order first, then others as first seen).
+    exerciseOrder: (s) => {
+      const sorted = [...s.entries].sort((a, b) => {
+        const rank = (e: Entry) => (e.source === 'assessment' ? 0 : 1)
+        return rank(a) - rank(b) || (a.id ?? 0) - (b.id ?? 0)
+      })
+      return Array.from(new Set(sorted.map((e) => e.exercise)))
+    },
 
     // Logged sessions grouped by date, newest first.
     sessions: (s) => {

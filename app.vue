@@ -11,7 +11,7 @@ const links = [
 
 <template>
   <div class="min-h-screen bg-slate-950 text-slate-100 pb-24">
-    <main class="mx-auto max-w-2xl px-4 pt-6">
+    <main class="mx-auto max-w-2xl overflow-x-hidden px-4 pt-6" style="padding-top: max(1.5rem, env(safe-area-inset-top))">
       <NuxtPage v-if="store.ready" />
       <p v-else class="text-slate-400">Loading…</p>
     </main>
