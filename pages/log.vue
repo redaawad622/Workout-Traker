@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Unit } from '~/utils/units'
+import type { Entry } from '~/utils/db'
 import { alternativesOf } from '~/utils/exercises'
 import { convertedFull, daysBetween, fmtDay, kgOf, relativeDay, splitName, todayISO } from '~/utils/format'
 
@@ -45,6 +46,8 @@ const doneSlots = computed(() => slotState.value.filter((s) => s === 'done').len
 const leftSlots = computed(() => store.slots.length - doneSlots.value)
 const currentSlot = computed(() => slotState.value.indexOf('current'))
 
+watch(() => form.date, () => editing.value && stopEdit())
+
 watch(
   remaining,
   (list) => {
@@ -53,18 +56,22 @@ watch(
   { immediate: true }
 )
 
-const name = computed(() => form.custom.trim() || form.exercise)
-const last = computed(() => store.byExercise(name.value)[0])
+// Tapping a done chip loads that entry into the form for editing.
+const editing = ref<Entry | null>(null)
+
+const name = computed(() => editing.value?.exercise ?? (form.custom.trim() || form.exercise))
+const last = computed(() => store.byExercise(name.value).find((e) => e.id !== editing.value?.id))
 const short = (n: string) => splitName(n)[0].replace(/ Machine$/, '')
 
 const kicker = computed(() => {
+  if (editing.value) return 'Editing'
   if (!last.value) return 'New exercise'
   return !form.custom && remaining.value.includes(name.value) ? 'Up next' : 'Extra'
 })
 
 // Pre-fill unit / per-dumbbell from the last time this exercise was logged.
 watch(last, (l) => {
-  if (!l) return
+  if (!l || editing.value) return
   form.unit = l.unit
   form.perDumbbell = !!l.perDumbbell
 })
@@ -107,8 +114,54 @@ const vsLast = computed(() => {
 const saved = ref('')
 let savedTimer: ReturnType<typeof setTimeout> | undefined
 
+function startEdit(exercise: string) {
+  // Latest entry for this exercise on the selected day.
+  const e = store.verified.find((x) => x.date === form.date && x.exercise === exercise)
+  if (!e) return
+  editing.value = e
+  form.weight = e.weight
+  form.unit = e.unit
+  form.perDumbbell = !!e.perDumbbell
+  form.sets = e.sets ?? 3
+  form.reps = e.reps ?? 10
+  if (e.bodyWeightKg) form.bodyWeightKg = e.bodyWeightKg
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+function stopEdit() {
+  editing.value = null
+  form.weight = undefined
+}
+
+function flash(text: string) {
+  saved.value = text
+  clearTimeout(savedTimer)
+  savedTimer = setTimeout(() => (saved.value = ''), 2500)
+}
+
+async function removeEditing() {
+  const e = editing.value
+  if (!e || !confirm(`Delete ${e.exercise} from ${fmtDay(e.date)}?`)) return
+  await store.remove(e.id!)
+  stopEdit()
+  flash(`Deleted ${e.exercise}`)
+}
+
 async function save() {
   if (!name.value || !form.weight) return
+  if (editing.value) {
+    await store.update(editing.value.id!, {
+      weight: form.weight,
+      unit: form.unit,
+      sets: form.sets,
+      reps: form.reps,
+      perDumbbell: form.perDumbbell || undefined,
+      bodyWeightKg: form.bodyWeightKg
+    })
+    flash(`Updated ${name.value}`)
+    stopEdit()
+    return
+  }
   await store.add({
     date: form.date,
     exercise: name.value,
@@ -120,11 +173,9 @@ async function save() {
     bodyWeightKg: form.bodyWeightKg,
     source: 'logged'
   })
-  saved.value = `Saved ${name.value}`
+  flash(`Saved ${name.value}`)
   form.weight = undefined
   form.custom = ''
-  clearTimeout(savedTimer)
-  savedTimer = setTimeout(() => (saved.value = ''), 2500)
 }
 
 // Picker sheet
@@ -135,6 +186,7 @@ const pickerRows = computed(() =>
     .filter((r) => r.names.length)
 )
 function pick(n: string) {
+  editing.value = null
   if (remaining.value.includes(n)) {
     form.exercise = n
     form.custom = ''
@@ -146,7 +198,7 @@ function pick(n: string) {
 }
 
 // All done for the day (until an extra exercise is picked).
-const allDone = computed(() => !remaining.value.length && !form.custom)
+const allDone = computed(() => !remaining.value.length && !form.custom && !editing.value)
 const dayStats = computed(() => {
   const today = store.verified.filter((e) => e.date === form.date && e.source === 'logged')
   let heavier = 0, matched = 0, lighter = 0
@@ -259,6 +311,16 @@ const segment = (s: string) =>
               <span class="text-[26px] font-medium leading-[1.15] tracking-[-0.01em]">{{ name }}</span>
             </div>
             <button
+              v-if="editing"
+              type="button"
+              aria-label="Cancel editing"
+              class="flex size-11 flex-none items-center justify-center rounded-md text-xl text-neutral-300 shadow-sm active:bg-neutral-900"
+              @click="stopEdit"
+            >
+              <i class="ph ph-x" />
+            </button>
+            <button
+              v-else
               type="button"
               aria-label="Change exercise"
               class="flex size-11 flex-none items-center justify-center rounded-md text-xl text-neutral-300 shadow-sm active:bg-neutral-900"
@@ -368,15 +430,31 @@ const segment = (s: string) =>
             />
           </span>
         </label>
+        <button
+          v-if="editing"
+          type="button"
+          class="flex h-12 items-center justify-center gap-2 rounded-lg text-[15px] text-neutral-300 shadow-[inset_0_0_0_1px_theme(colors.neutral.700)] active:bg-neutral-900"
+          @click="removeEditing"
+        >
+          <i class="ph ph-trash" />Delete this entry
+        </button>
       </template>
 
       <!-- Done on this date -->
       <div v-if="chips.length" class="flex flex-col gap-2.5">
-        <span class="label">Done on this date</span>
+        <span class="label">Done on this date · tap to edit</span>
         <ul class="flex flex-wrap gap-1.5">
           <li v-for="c in chips" :key="c.name">
             <span v-if="c.skipped" class="chip text-neutral-400 shadow-[inset_0_0_0_1px_theme(colors.neutral.700)]">skipped · {{ short(c.name) }}</span>
-            <span v-else class="chip bg-accent-900 text-accent-200"><i class="ph-bold ph-check" />{{ short(c.name) }}</span>
+            <button
+              v-else
+              type="button"
+              class="chip bg-accent-900 text-accent-200 active:bg-accent-800"
+              :class="editing?.exercise === c.name && 'shadow-[inset_0_0_0_1.5px_theme(colors.accent.DEFAULT)]'"
+              @click="startEdit(c.name)"
+            >
+              <i class="ph-bold ph-check" />{{ short(c.name) }}
+            </button>
           </li>
         </ul>
       </div>
@@ -419,7 +497,7 @@ const segment = (s: string) =>
               "
             >
               <i class="ph-bold ph-check" />
-              <span class="truncate">{{ form.weight ? `Save ${short(name)}` : 'Enter a weight to save' }}</span>
+              <span class="truncate">{{ form.weight ? `${editing ? 'Update' : 'Save'} ${short(name)}` : 'Enter a weight to save' }}</span>
             </button>
           </div>
         </div>
