@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { fixed1, fmtShort, kgOf, signed, splitName, todayISO } from '~/utils/format'
+import { MAX_SESSIONS_TO_SWITCH } from '~/stores/workout'
 
 const store = useWorkoutStore()
 const route = useRoute()
@@ -25,6 +26,8 @@ const baseline = computed(() => [...rows.value].reverse().find((r) => r.source =
 const points = computed(() =>
   [...rows.value].reverse().map((r) => ({ date: r.date, kg: kgOf(r), baseline: r.source === 'assessment' }))
 )
+const max = computed(() => store.machineMax[selected.value])
+const atMaxCount = computed(() => store.datesAtMax(selected.value).length)
 const when = (d: string) => (d === todayISO() ? 'today' : `on ${fmtShort(d)}`)
 </script>
 
@@ -66,6 +69,13 @@ const when = (d: string) => (d === todayISO() ? 'today' : `on ${fmtShort(d)}`)
     <div v-else class="flex h-[220px] flex-col justify-end gap-2 rounded-lg border border-dashed border-neutral-700 p-5">
       <i class="ph ph-chart-line-up text-[32px] text-neutral-600" />
       <span class="text-base leading-[1.45] text-neutral-300">Log this exercise at least twice to see a trend</span>
+    </div>
+
+    <div v-if="max" class="card tnum flex items-center justify-between gap-3 px-3.5 py-3 text-sm">
+      <span class="text-neutral-300">Machine max {{ max.weight }} {{ max.unit }} <span class="text-neutral-500">≈ {{ fixed1(kgOf(max)) }} kg</span></span>
+      <span :class="atMaxCount >= MAX_SESSIONS_TO_SWITCH ? 'text-warn-text' : 'text-neutral-400'">
+        {{ atMaxCount ? `at max ${atMaxCount}×` : `${rows.length ? Math.round((kgOf(latest) / kgOf(max)) * 100) : 0}% of max` }}
+      </span>
     </div>
 
     <div v-if="rows.length" class="flex flex-col gap-2">
