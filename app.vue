@@ -9,13 +9,13 @@ onMounted(async () => {
 })
 const links = [
   { to: '/', label: 'History', icon: 'clock-counter-clockwise' },
-  { to: '/log', label: 'Log', icon: 'plus-circle' },
+  { to: '/log', label: 'Log', icon: 'plus-circle', also: '/programs' },
   { to: '/diet', label: 'Diet', icon: 'fork-knife' },
   { to: '/progress', label: 'Progress', icon: 'chart-line-up' },
   { to: '/reports', label: 'Reports', icon: 'chart-bar', also: '/data' }
 ]
 const route = useRoute()
-// Data (backup) is opened from Reports, so it keeps the Reports tab lit.
+// Data (backup) is opened from Reports and Programs from Log, so they keep their tab lit.
 const isActive = (l: { to: string; also?: string }) =>
   l.to === '/' ? route.path === '/' : route.path.startsWith(l.to) || (!!l.also && route.path.startsWith(l.also))
 </script>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Unit } from '~/utils/units'
 import type { Entry } from '~/utils/db'
-import { alternativesOf, DAY_LABELS, slotsOf, type DayType } from '~/utils/exercises'
+import { alternativesOf, dayKey, programOfDay, slotsOf, type DayType } from '~/utils/exercises'
 import { convertedFull, daysBetween, fixed1, fmtDay, kgOf, relativeDay, splitName, todayISO } from '~/utils/format'
 import { MAX_SESSIONS_TO_SWITCH } from '~/stores/workout'
 
@@ -19,14 +19,25 @@ const form = reactive({
   perDumbbell: false
 })
 
-// Kind of day for the selected date: what was picked for it, else full body, or the next
-// split day in the rotation when the routine is push/pull/legs.
-const dayType = computed<DayType>(
-  () => store.dayTypes[form.date] ?? (store.mode === 'full' ? 'full' : store.nextSplitDay(form.date))
-)
+// Kind of day for the selected date: what was picked for it, else the next day in the
+// rotation of the current program.
+const dayType = computed<DayType>(() => store.dayTypeFor(form.date))
 const plan = computed(() => store.planFor(dayType.value))
 const planSlots = computed(() => slotsOf(plan.value))
-const dayOptions = Object.keys(DAY_LABELS) as DayType[]
+
+// Program picker: every live program, plus a deleted one if this date was trained on it.
+const program = computed(() => store.programById(programOfDay(dayType.value)) ?? store.programs[0])
+const programOptions = computed(() =>
+  program.value.deleted ? [...store.programs, program.value] : store.programs
+)
+const dayOptions = computed(() =>
+  program.value.days
+    .filter((d) => !d.deleted || dayKey(program.value.id, d.id) === dayType.value)
+    .map((d) => ({ type: dayKey(program.value.id, d.id), name: d.name }))
+)
+function pickProgram(id: string) {
+  if (id !== program.value.id) store.setDayType(form.date, store.nextDay(form.date, id))
+}
 
 // Exercises already logged on the selected day are hidden, so the list = what is left to do.
 const doneToday = computed(
@@ -191,8 +202,8 @@ async function save() {
     stopEdit()
     return
   }
-  // A brand-new exercise on a split day joins that day's list.
-  if (dayType.value !== 'full' && !store.exercises.includes(name.value)) await store.addToSplit(dayType.value, name.value)
+  // A brand-new exercise joins the day's list.
+  if (!plan.value.includes(name.value) && !store.exercises.includes(name.value)) await store.addToDay(dayType.value, name.value)
   if (!store.dayTypes[form.date]) await store.setDayType(form.date, dayType.value)
   await store.add({
     date: form.date,
@@ -290,20 +301,45 @@ const segment = (s: string) =>
         </label>
       </div>
 
-      <!-- Kind of day -->
-      <div class="grid grid-cols-4 rounded-md bg-neutral-900 p-[3px]" role="radiogroup" aria-label="Workout">
-        <button
-          v-for="t in dayOptions"
-          :key="t"
-          type="button"
-          role="radio"
-          :aria-checked="dayType === t"
-          class="flex h-[34px] items-center justify-center rounded-[6px] text-sm"
-          :class="dayType === t ? 'bg-accent-800 font-medium text-accent-200' : 'text-neutral-400'"
-          @click="store.setDayType(form.date, t)"
+      <!-- Program + kind of day -->
+      <div class="flex flex-col gap-2">
+        <div class="flex items-center justify-between gap-3">
+          <label class="relative flex min-h-11 min-w-0 items-center gap-2">
+            <i class="ph ph-barbell text-lg text-accent-400" />
+            <span class="truncate text-[15px] font-medium">{{ program.name }}</span>
+            <i class="ph ph-caret-down text-neutral-500" />
+            <select
+              :value="program.id"
+              aria-label="Program"
+              class="absolute inset-0 opacity-0"
+              @change="pickProgram(($event.target as HTMLSelectElement).value)"
+            >
+              <option v-for="p in programOptions" :key="p.id" :value="p.id">{{ p.name }}{{ p.deleted ? ' (deleted)' : '' }}</option>
+            </select>
+          </label>
+          <NuxtLink to="/programs" class="flex h-11 flex-none items-center gap-1.5 text-sm text-neutral-400">
+            <i class="ph ph-pencil-simple" />Programs
+          </NuxtLink>
+        </div>
+        <div
+          v-if="dayOptions.length > 1"
+          class="flex gap-[3px] overflow-x-auto rounded-md bg-neutral-900 p-[3px]"
+          role="radiogroup"
+          aria-label="Workout day"
         >
-          {{ DAY_LABELS[t] }}
-        </button>
+          <button
+            v-for="d in dayOptions"
+            :key="d.type"
+            type="button"
+            role="radio"
+            :aria-checked="dayType === d.type"
+            class="flex h-[34px] min-w-[72px] flex-1 items-center justify-center whitespace-nowrap rounded-[6px] px-2 text-sm"
+            :class="dayType === d.type ? 'bg-accent-800 font-medium text-accent-200' : 'text-neutral-400'"
+            @click="store.setDayType(form.date, d.type)"
+          >
+            {{ d.name }}
+          </button>
+        </div>
       </div>
 
       <!-- Day progress -->
