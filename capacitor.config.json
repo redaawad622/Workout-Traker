@@ -1,6 +1,6 @@
 {
   "appId": "com.redaawad.workoutlog",
-  "appName": "Workout Log",
+  "appName": "Workout Tracker",
   "webDir": ".output/public",
   "backgroundColor": "#161826",
   "ios": { "contentInset": "never" }

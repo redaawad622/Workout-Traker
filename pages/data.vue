@@ -41,7 +41,7 @@ async function onPick(e: Event) {
     const backup = parseBackup(json)
     pending.value = { file: file.name, json, meals: !!backup.meals }
   } catch {
-    status.value = { ok: false, text: "isn't a Workout Log backup. Nothing was changed.", file: file.name }
+    status.value = { ok: false, text: "isn't a Workout Tracker backup. Nothing was changed.", file: file.name }
   }
 }
 
@@ -54,7 +54,7 @@ async function replace() {
     const meals = data.meals ? ` and ${data.meals.length} meals` : ''
     status.value = { ok: true, text: `Imported ${store.entries.length} entries${meals} · ${p.file}` }
   } catch {
-    status.value = { ok: false, text: "isn't a Workout Log backup. Nothing was changed.", file: p.file }
+    status.value = { ok: false, text: "isn't a Workout Tracker backup. Nothing was changed.", file: p.file }
   }
 }
 

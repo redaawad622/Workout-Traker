@@ -18,7 +18,7 @@ export default defineNuxtConfig({
   nitro: { prerender: { crawlLinks: true, routes: ['/', '/log', '/diet', '/progress', '/reports', '/data'] } },
   app: {
     head: {
-      title: 'Workout Log',
+      title: 'Workout Tracker',
       meta: [
         { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
         { name: 'theme-color', content: '#161826' }
@@ -34,8 +34,8 @@ export default defineNuxtConfig({
     registerType: 'autoUpdate',
     includeAssets: ['favicon.ico', 'favicon.svg', 'apple-touch-icon-180x180.png'],
     manifest: {
-      name: 'Workout Log',
-      short_name: 'Workout',
+      name: 'Workout Tracker',
+      short_name: 'Workout Tracker',
       theme_color: '#161826',
       background_color: '#161826',
       display: 'standalone',
