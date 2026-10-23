@@ -86,7 +86,7 @@ export function parseBackup(json: string): Backup {
       (typeof backup.dayTypes === 'object' &&
         Object.entries(backup.dayTypes).every(([d, t]) => isDate(d) && typeof t === 'string'))) &&
     (backup.routine === undefined || typeof backup.routine === 'object')
-  if (!valid) throw new Error('Not a Workout Log backup')
+  if (!valid) throw new Error('Not a Workout Tracker backup')
   return backup
 }
 
@@ -388,7 +388,7 @@ export const useWorkoutStore = defineStore('workout', {
       if (e) Object.assign(e, { source: 'logged', date })
     },
 
-    // Throws before touching the database if the file isn't a Workout Log backup.
+    // Throws before touching the database if the file isn't a Workout Tracker backup.
     // Meals, foods, machine maxes, programs and day types are only replaced when the file
     // has them, so an older backup leaves those alone.
     async importJson(json: string) {
@@ -446,7 +446,7 @@ export const useWorkoutStore = defineStore('workout', {
 
     exportMarkdown() {
       const rows = [...this.entries].sort((a, b) => a.date.localeCompare(b.date))
-      const lines = ['# Workout Log', '', '| Date | Exercise | Weight | kg | Sets × Reps | Body kg | Source |', '|---|---|---:|---:|---|---:|---|']
+      const lines = ['# Workout Tracker', '', '| Date | Exercise | Weight | kg | Sets × Reps | Body kg | Source |', '|---|---|---:|---:|---|---:|---|']
       for (const e of rows) {
         lines.push(
           `| ${e.date} | ${e.exercise} | ${e.weight} ${e.unit}${e.perDumbbell ? '/db' : ''} | ${toKg(e.weight, e.unit)} | ${e.sets && e.reps ? `${e.sets} × ${e.reps}` : '—'} | ${e.bodyWeightKg ?? '—'} | ${e.source} |`
