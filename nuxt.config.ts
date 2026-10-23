@@ -20,6 +20,13 @@ export default defineNuxtConfig({
         { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
         { name: 'theme-color', content: '#161826' }
       ],
+      // Apply the saved theme before first paint (see composables/useTheme.ts).
+      script: [
+        {
+          innerHTML:
+            "try{var t=localStorage.getItem('theme');if(t==='system')t=matchMedia('(prefers-color-scheme: dark)').matches?'nocturne':'daylight';if(t==='daylight')document.documentElement.dataset.theme=t}catch(e){}"
+        }
+      ],
       link: [
         { rel: 'icon', href: '/favicon.ico', sizes: '48x48' },
         { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' },

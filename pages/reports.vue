@@ -2,6 +2,7 @@
 import { todayISO } from '~/utils/format'
 import { grouped, PERIODS, report } from '~/utils/reports'
 import { useDietStore } from '~/stores/diet'
+import type { ThemeChoice } from '~/composables/useTheme'
 
 const store = useWorkoutStore()
 const diet = useDietStore()
@@ -12,6 +13,22 @@ const rows = computed(() => {
 })
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+
+const { choice } = useTheme()
+// Each swatch is a tiny drawing of that theme: ground, a card, an accent pill.
+const themes: { id: ThemeChoice; label: string; ground: string; card: string; pill: string; note: string }[] = [
+  { id: 'nocturne', label: 'Nocturne', ground: '#161826', card: '#232532', pill: '#9184d9', note: 'Dark, violet accent. Easy on the eyes at night and in the gym.' },
+  { id: 'daylight', label: 'Daylight', ground: '#f5f5f7', card: '#ffffff', pill: '#0066cc', note: 'Light, blue accent. Crisp in bright rooms and outdoors.' },
+  {
+    id: 'system',
+    label: 'Match iPhone',
+    ground: 'linear-gradient(90deg, #161826 50%, #f5f5f7 50%)',
+    card: 'linear-gradient(90deg, #232532 50%, #ffffff 50%)',
+    pill: '#0066cc',
+    note: 'Follows your iPhone: Daylight by day, Nocturne in Dark Mode.'
+  }
+]
+const themeNote = computed(() => themes.find((t) => t.id === choice.value)!.note)
 </script>
 
 <template>
@@ -24,6 +41,34 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
     </div>
 
     <ShareDay />
+    <section class="flex flex-col gap-2">
+      <span class="label">Appearance</span>
+      <div class="card flex flex-col gap-3 p-3.5">
+        <div class="grid grid-cols-3 gap-2.5" role="radiogroup" aria-label="Theme">
+          <button
+            v-for="t in themes"
+            :key="t.id"
+            type="button"
+            role="radio"
+            :aria-checked="choice === t.id"
+            class="flex flex-col items-center gap-2 rounded-md pb-1 text-[13px]"
+            :class="choice === t.id ? 'font-medium text-accent-300' : 'text-ink'"
+            @click="choice = t.id"
+          >
+            <span
+              class="relative h-16 w-full overflow-hidden rounded-md"
+              :class="choice === t.id ? 'shadow-[0_0_0_2px_theme(colors.accent.DEFAULT)]' : 'shadow-sm'"
+              :style="{ background: t.ground }"
+            >
+              <span class="absolute inset-x-2 top-2.5 h-[22px] rounded-[6px]" :style="{ background: t.card }" />
+              <span class="absolute bottom-2 left-2 h-2 w-7 rounded-full" :style="{ background: t.pill }" />
+            </span>
+            {{ t.label }}
+          </button>
+        </div>
+        <p class="text-[13px] leading-[1.4] text-neutral-400">{{ themeNote }}</p>
+      </div>
+    </section>
 
     <section v-for="p in rows" :key="p.key" class="flex flex-col gap-2">
       <span class="label">{{ p.label }}</span>
