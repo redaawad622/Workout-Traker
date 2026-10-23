@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Entry } from '~/utils/db'
-import type { AiExercise } from '~/utils/ai'
+import { exercisePrompt, parseExercise, type AiExercise } from '~/utils/ai'
 import { DAY_LABELS, SPLIT_DAYS } from '~/utils/exercises'
 import { splitName, weightText } from '~/utils/format'
 
@@ -20,23 +20,8 @@ function add() {
   if (name) emit('select', name)
 }
 
-// Optional: Claude tidies the name and says which day and muscles it is; the user checks it first.
-const claude = useClaude()
-const ai = reactive({ busy: false, error: '', result: null as AiExercise | null })
-async function askClaude() {
-  const name = custom.value.trim()
-  if (!name || ai.busy) return
-  ai.busy = true
-  ai.error = ''
-  ai.result = null
-  try {
-    ai.result = await claude.fillExercise(name)
-  } catch (e) {
-    ai.error = (e as Error).message
-  } finally {
-    ai.busy = false
-  }
-}
+// Optional: the Claude app tidies the name and says which day and muscles it is; the user checks it first.
+const ai = reactive({ result: null as AiExercise | null })
 function useResult() {
   const r = ai.result
   if (r?.name.trim()) emit('select', r.name.trim(), { ...r, name: r.name.trim() })
@@ -140,7 +125,6 @@ const EQUIPMENT: Record<AiExercise['equipment'], string> = {
           </button>
         </div>
       </div>
-      <p v-if="ai.error" role="alert" class="text-sm leading-[1.4] text-warn-text">{{ ai.error }}</p>
 
       <form class="flex gap-2" @submit.prevent="add">
         <label class="flex h-[52px] min-w-0 flex-1 items-center gap-2 rounded-md bg-bg px-3.5 shadow-sm focus-within:shadow-[0_0_0_1px_theme(colors.accent.DEFAULT)]">
@@ -148,22 +132,13 @@ const EQUIPMENT: Record<AiExercise['equipment'], string> = {
           <input v-model="custom" placeholder="New exercise name" class="min-w-0 flex-1 bg-transparent text-[15px] placeholder:text-neutral-500" />
         </label>
         <button
-          type="button"
-          aria-label="Ask Claude"
-          :disabled="!custom.trim() || ai.busy"
-          class="flex h-[52px] w-[52px] flex-none items-center justify-center rounded-md text-xl"
-          :class="custom.trim() ? 'text-accent-300 shadow-[inset_0_0_0_1px_theme(colors.accent.DEFAULT)]' : 'text-neutral-500 shadow-[inset_0_0_0_1px_theme(colors.neutral.700)]'"
-          @click="askClaude"
-        >
-          <i class="ph ph-sparkle" :class="ai.busy && 'animate-spin'" />
-        </button>
-        <button
           class="h-[52px] w-16 flex-none rounded-md text-[15px]"
           :class="custom.trim() ? 'text-accent-300 shadow-[inset_0_0_0_1px_theme(colors.accent.DEFAULT)]' : 'text-neutral-400 shadow-[inset_0_0_0_1px_theme(colors.neutral.700)]'"
         >
           Add
         </button>
       </form>
+      <ClaudeAsk v-if="custom.trim() && !ai.result" :prompt="exercisePrompt(custom.trim())" :parse="parseExercise" @result="(r) => (ai.result = r)" />
     </div>
   </Teleport>
 </template>
