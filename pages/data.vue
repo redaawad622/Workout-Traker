@@ -63,18 +63,6 @@ async function exportBackup() {
 }
 
 const failed = computed(() => status.value && !status.value.ok)
-
-// "Ask Claude" passcode, kept on this phone only.
-const aiCode = ref('')
-const aiSaved = ref(false)
-onMounted(async () => {
-  aiCode.value = await getAiPasscode()
-  aiSaved.value = !!aiCode.value
-})
-async function saveAiCode() {
-  await setAiPasscode(aiCode.value.trim())
-  aiSaved.value = !!aiCode.value.trim()
-}
 </script>
 
 <template>
@@ -140,25 +128,6 @@ async function saveAiCode() {
         </span>
         <input type="file" accept="application/json,.json" class="sr-only" @change="onPick" />
       </label>
-    </section>
-
-    <section class="flex flex-col gap-2.5">
-      <h2 class="label">Ask Claude</h2>
-      <p class="text-sm leading-normal text-neutral-400">
-        Fills in new foods and exercises for you to check. Needs internet. Enter the passcode you set as AI_PASSCODE in Vercel.
-      </p>
-      <form class="flex gap-2" @submit.prevent="saveAiCode">
-        <input
-          v-model="aiCode"
-          type="password"
-          autocomplete="off"
-          placeholder="Passcode"
-          aria-label="Claude passcode"
-          class="h-[52px] min-w-0 flex-1 rounded-md bg-bg px-3.5 text-[15px] shadow-sm placeholder:text-neutral-500 focus:shadow-[0_0_0_1px_theme(colors.accent.DEFAULT)]"
-        />
-        <button class="h-[52px] rounded-md px-4 text-[15px] text-accent-300 shadow-[inset_0_0_0_1px_theme(colors.accent.DEFAULT)]">Save</button>
-      </form>
-      <span class="text-xs text-neutral-500">{{ aiSaved ? 'Passcode saved on this phone.' : 'Not set. You will be asked the first time you use it.' }}</span>
     </section>
 
     <!-- Confirm before replacing everything -->

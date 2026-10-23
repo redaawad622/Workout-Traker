@@ -4,13 +4,11 @@
   "type": "module",
   "scripts": {
     "dev": "nuxt dev",
-    "build": "nuxt build",
-    "generate": "nuxt generate",
+    "build": "nuxt generate",
     "preview": "nuxt preview",
     "ios": "nuxt generate && cap sync ios"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^1.1.0",
     "@capacitor/core": "^8.5.3",
     "@capacitor/filesystem": "^8.1.5",
     "@capacitor/ios": "^8.5.3",

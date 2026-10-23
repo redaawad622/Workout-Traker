@@ -3,6 +3,7 @@ import type { Meal } from '~/utils/db'
 import { matches, type Food } from '~/utils/foods'
 import { fmtN, fmtQty, NUTRIENTS, plural, scale, SLOTS, type MealSlot, type Nutrients } from '~/utils/nutrition'
 import { useDietStore } from '~/stores/diet'
+import { foodPrompt, parseFood, type AiFood } from '~/utils/ai'
 
 // Bottom sheet: search a food → set the amount → add. Opened with a meal it edits that meal instead.
 const props = defineProps<{ date: string; slot: MealSlot; meal?: Meal }>()
@@ -110,36 +111,20 @@ function startCustom() {
   custom.name = query.value.trim()
   custom.ar = ''
   custom.servingLabel = ''
-  ai.note = ai.error = ''
+  aiNote.value = ''
   step.value = 'custom'
 }
 
-// Optional: ask Claude for the values, then the user checks them in the form before saving.
-const claude = useClaude()
-const ai = reactive({ busy: false, note: '', error: '' })
-async function askClaude() {
-  const name = custom.name.trim()
-  if (!name || ai.busy) return
-  ai.busy = true
-  ai.note = ai.error = ''
-  try {
-    const r = await claude.fillFood(name)
-    custom.name = r.name || name
-    custom.ar = r.ar
-    custom.basis = '100g'
-    custom.servingG = r.servingG || undefined
-    custom.servingLabel = r.servingLabel
-    for (const { key } of NUTRIENTS) custom.values[key] = r.per100[key]
-    ai.note = r.note
-  } catch (e) {
-    ai.error = (e as Error).message
-  } finally {
-    ai.busy = false
-  }
-}
-function askClaudeFor() {
-  startCustom()
-  askClaude()
+// Optional: ask the Claude app for the values, then the user checks them in the form before saving.
+const aiNote = ref('')
+function fillFromClaude(r: AiFood) {
+  custom.name = r.name || custom.name
+  custom.ar = r.ar
+  custom.basis = '100g'
+  custom.servingG = r.servingG || undefined
+  custom.servingLabel = r.servingLabel
+  for (const { key } of NUTRIENTS) custom.values[key] = r.per100[key]
+  aiNote.value = r.note || ' '
 }
 const customOk = computed(() => custom.name.trim() && custom.values.kcal != null)
 async function saveCustom() {
@@ -204,14 +189,9 @@ const inputCls =
             </li>
           </ul>
         </div>
-        <div class="flex gap-2">
-          <button type="button" class="btn-outline h-[52px] flex-1 text-[15px]" @click="startCustom">
-            <i class="ph ph-plus" />{{ query.trim() ? `Add “${query.trim()}”` : 'Add my own food' }}
-          </button>
-          <button v-if="query.trim()" type="button" class="btn-outline h-[52px] flex-1 text-[15px]" @click="askClaudeFor">
-            <i class="ph ph-sparkle text-accent-400" />Ask Claude
-          </button>
-        </div>
+        <button type="button" class="btn-outline h-[52px] text-[15px]" @click="startCustom">
+          <i class="ph ph-plus" />{{ query.trim() ? `Add “${query.trim()}” as my food` : 'Add my own food' }}
+        </button>
       </template>
 
       <!-- ========== Amount ========== -->
@@ -327,21 +307,10 @@ const inputCls =
           </button>
           <span class="text-xl font-medium">My food</span>
         </div>
-        <div class="flex gap-2">
-          <input v-model="custom.name" placeholder="Name, e.g. Mom's molokhia" aria-label="Food name" :class="inputCls" />
-          <button
-            type="button"
-            :disabled="!custom.name.trim() || ai.busy"
-            class="flex h-11 flex-none items-center gap-1.5 rounded-md px-3 text-sm shadow-[inset_0_0_0_1px_theme(colors.accent.DEFAULT)]"
-            :class="custom.name.trim() ? 'text-accent-300' : 'text-neutral-500 opacity-60'"
-            @click="askClaude"
-          >
-            <i class="ph ph-sparkle" :class="ai.busy && 'animate-spin'" />{{ ai.busy ? 'Asking…' : 'Ask Claude' }}
-          </button>
-        </div>
-        <p v-if="ai.error" role="alert" class="text-sm leading-[1.4] text-warn-text">{{ ai.error }}</p>
-        <p v-else-if="ai.note" class="flex gap-2 rounded-md p-3 text-sm leading-[1.4] text-neutral-300 shadow-[inset_0_0_0_1px_theme(colors.neutral.800)]">
-          <i class="ph ph-sparkle flex-none text-accent-400" /><span>Filled by Claude. Check the values, then save. {{ ai.note }}</span>
+        <input v-model="custom.name" placeholder="Name, e.g. Mom's molokhia" aria-label="Food name" :class="[inputCls, 'flex-none']" />
+        <ClaudeAsk :prompt="foodPrompt(custom.name.trim())" :parse="parseFood" :disabled="!custom.name.trim()" @result="fillFromClaude" />
+        <p v-if="aiNote" class="flex gap-2 rounded-md p-3 text-sm leading-[1.4] text-neutral-300 shadow-[inset_0_0_0_1px_theme(colors.neutral.800)]">
+          <i class="ph ph-sparkle flex-none text-accent-400" /><span>Filled by Claude. Check the values, then save. {{ aiNote }}</span>
         </p>
 
         <div class="flex flex-col gap-2">
