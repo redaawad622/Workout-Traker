@@ -3,7 +3,22 @@ import type { CustomFood, Entry, Meal } from '~/utils/db'
 import { SEED_ENTRIES } from '~/utils/seed'
 import { toKg, type Unit } from '~/utils/units'
 import type { AiExercise } from '~/utils/ai'
-import { ALTERNATIVE_GROUPS, DEFAULT_SPLIT, SPLIT_DAYS, slotsOf, type DayType, type SplitDay } from '~/utils/exercises'
+import {
+  ALTERNATIVE_GROUPS,
+  DAY_LABELS,
+  DEFAULT_SPLIT,
+  FULL_BODY,
+  PPL,
+  SPLIT_DAYS,
+  dayKey,
+  isBuiltIn,
+  programOfDay,
+  slotsOf,
+  type DayType,
+  type Program,
+  type ProgramDay,
+  type SplitDay
+} from '~/utils/exercises'
 
 const SOURCES = ['assessment', 'logged', 'unverified']
 
@@ -21,7 +36,26 @@ export interface Backup {
   meals?: Meal[] // absent in backups made before the diet log
   foods?: CustomFood[]
   machineMax?: MachineMax // absent in backups made before machine maxes
+  // Absent in backups made before custom programs.
+  programs?: Program[]
+  dayTypes?: Record<string, DayType>
+  routine?: Routine
 }
+
+// Saved in meta key "routine". `mode` is what versions before custom programs read.
+interface Routine {
+  program?: string
+  mode?: 'full' | 'split'
+  split?: Record<SplitDay, string[]>
+}
+
+const isStrings = (l: unknown) => Array.isArray(l) && l.every((x) => typeof x === 'string')
+const isProgram = (p: any) =>
+  p &&
+  typeof p.id === 'string' &&
+  typeof p.name === 'string' &&
+  Array.isArray(p.days) &&
+  p.days.every((d: any) => d && typeof d.id === 'string' && typeof d.name === 'string' && isStrings(d.exercises))
 
 // Accepts the original format (a bare array of entries) and the current one
 // ({ entries, meals, foods }).
@@ -46,7 +80,12 @@ export function parseBackup(json: string): Backup {
       (Array.isArray(backup.foods) && backup.foods.every((f) => f && typeof f.name === 'string' && isNutrients(f.per100)))) &&
     (backup.machineMax === undefined ||
       (typeof backup.machineMax === 'object' &&
-        Object.values(backup.machineMax).every((m: any) => m && typeof m.weight === 'number' && (m.unit === 'lbs' || m.unit === 'kg'))))
+        Object.values(backup.machineMax).every((m: any) => m && typeof m.weight === 'number' && (m.unit === 'lbs' || m.unit === 'kg')))) &&
+    (backup.programs === undefined || (Array.isArray(backup.programs) && backup.programs.every(isProgram))) &&
+    (backup.dayTypes === undefined ||
+      (typeof backup.dayTypes === 'object' &&
+        Object.entries(backup.dayTypes).every(([d, t]) => isDate(d) && typeof t === 'string'))) &&
+    (backup.routine === undefined || typeof backup.routine === 'object')
   if (!valid) throw new Error('Not a Workout Log backup')
   return backup
 }
@@ -55,10 +94,12 @@ export const useWorkoutStore = defineStore('workout', {
   state: () => ({
     entries: [] as Entry[],
     ready: false,
-    // Routine kept in the meta table (no schema change): which way new days default to,
+    // Routine kept in the meta table (no schema change): which program new days default to,
     // and the push/pull/legs lists.
-    mode: 'full' as 'full' | 'split',
+    program: FULL_BODY as string,
     split: structuredClone(DEFAULT_SPLIT) as Record<SplitDay, string[]>,
+    // Programs you made (meta key "programs"), deleted ones included.
+    customPrograms: [] as Program[],
     // Which kind of day each date was trained as, keyed by YYYY-MM-DD (meta keys "day:<date>").
     dayTypes: {} as Record<string, DayType>,
     machineMax: {} as MachineMax,
@@ -89,19 +130,70 @@ export const useWorkoutStore = defineStore('workout', {
       return slotsOf(this.exercises)
     },
 
-    // Exercises planned for a kind of day: full body = everything, in training order.
-    planFor() {
-      return (type: DayType) => (type === 'full' ? this.exercises : this.split[type])
+    // Every program, built-in first. Includes deleted ones so old dates still resolve.
+    allPrograms(): Program[] {
+      return [
+        { id: FULL_BODY, name: 'Full body', days: [{ id: 'full', name: 'Full body', exercises: this.exercises }] },
+        { id: PPL, name: 'Push / Pull / Legs', days: SPLIT_DAYS.map((d) => ({ id: d, name: DAY_LABELS[d], exercises: this.split[d] })) },
+        ...this.customPrograms
+      ]
     },
 
-    // Split day that follows the most recent logged split day before `date`.
-    nextSplitDay() {
-      return (date: string): SplitDay => {
-        const prev = this.sessions.find((s) => s.date < date && this.dayTypes[s.date] && this.dayTypes[s.date] !== 'full')
-        if (!prev) return SPLIT_DAYS[0]
-        const i = SPLIT_DAYS.indexOf(this.dayTypes[prev.date] as SplitDay)
-        return SPLIT_DAYS[(i + 1) % SPLIT_DAYS.length]
+    programs(): Program[] {
+      return this.allPrograms.filter((p) => !p.deleted)
+    },
+
+    programById() {
+      return (id: string) => this.allPrograms.find((p) => p.id === id)
+    },
+
+    dayOf() {
+      return (type: DayType): ProgramDay | undefined => {
+        const p = this.programById(programOfDay(type))
+        return p?.days.find((d) => dayKey(p.id, d.id) === type)
       }
+    },
+
+    // Name shown for a date's day type. A program with one day is shown by the program's name.
+    dayLabel() {
+      return (type: DayType) => {
+        const p = this.programById(programOfDay(type))
+        const day = this.dayOf(type)
+        if (!p || !day) return p?.name ?? ''
+        return p.days.filter((d) => !d.deleted).length > 1 || isBuiltIn(p.id) ? day.name : p.name
+      }
+    },
+
+    // Exercises planned for a kind of day: full body = everything, in training order.
+    planFor() {
+      return (type: DayType) => this.dayOf(type)?.exercises ?? this.exercises
+    },
+
+    // Day of a program that follows the most recent logged day of that program before `date`.
+    nextDay() {
+      return (date: string, programId: string): DayType => {
+        const p = this.programById(programId) ?? this.allPrograms[0]
+        const days = p.days.filter((d) => !d.deleted)
+        const prev = this.sessions.find((s) => s.date < date && this.dayTypes[s.date] && programOfDay(this.dayTypes[s.date]) === p.id)
+        const i = prev ? days.findIndex((d) => dayKey(p.id, d.id) === this.dayTypes[prev.date]) : -1
+        return dayKey(p.id, days[(i + 1) % days.length].id)
+      }
+    },
+
+    // Day type for a date: what was picked for it, else the next day of the current program.
+    dayTypeFor() {
+      return (date: string): DayType => {
+        if (this.dayTypes[date]) return this.dayTypes[date]
+        const current = this.programs.find((p) => p.id === this.program)
+        return this.nextDay(date, current?.id ?? FULL_BODY)
+      }
+    },
+
+    // Every exercise name you know: logged ones plus any only in a program.
+    knownExercises(): string[] {
+      const all = new Set(this.exercises)
+      for (const p of this.allPrograms) for (const d of p.days) d.exercises.forEach((e) => all.add(e))
+      return [...all]
     },
 
     // Verified entries only, newest first.
@@ -178,9 +270,8 @@ export const useWorkoutStore = defineStore('workout', {
         await db.meta.put({ key: 'seeded', value: true })
       }
       this.entries = await db.entries.toArray()
-      const routine = (await db.meta.get('routine'))?.value as { mode?: 'full' | 'split'; split?: Record<SplitDay, string[]> } | undefined
-      if (routine?.mode) this.mode = routine.mode
-      if (routine?.split) Object.assign(this.split, routine.split)
+      this.applyRoutine((await db.meta.get('routine'))?.value as Routine | undefined)
+      this.customPrograms = ((await db.meta.get('programs'))?.value as Program[]) ?? []
       this.machineMax = ((await db.meta.get('machineMax'))?.value as MachineMax) ?? {}
       for (const m of await db.meta.where('key').startsWith('day:').toArray()) {
         this.dayTypes[m.key.slice(4)] = m.value as DayType
@@ -200,14 +291,29 @@ export const useWorkoutStore = defineStore('workout', {
       this.entries.push({ ...entry, id })
     },
 
-    async saveRoutine() {
-      await useDb().meta.put({ key: 'routine', value: { mode: this.mode, split: structuredClone(toRaw(this.split)) } })
+    // Routines saved before custom programs only have `mode`.
+    applyRoutine(routine: Routine | undefined) {
+      if (routine?.program) this.program = routine.program
+      else if (routine?.mode) this.program = routine.mode === 'split' ? PPL : FULL_BODY
+      if (routine?.split) Object.assign(this.split, routine.split)
     },
 
-    // Pick the kind of day for a date. Also becomes the default for new days.
+    routineValue(): Routine {
+      return { program: this.program, mode: this.program === FULL_BODY ? 'full' : 'split', split: structuredClone(toRaw(this.split)) }
+    },
+
+    async saveRoutine() {
+      await useDb().meta.put({ key: 'routine', value: this.routineValue() })
+    },
+
+    async savePrograms() {
+      await useDb().meta.put({ key: 'programs', value: structuredClone(toRaw(this.customPrograms)) })
+    },
+
+    // Pick the kind of day for a date. Its program also becomes the default for new days.
     async setDayType(date: string, type: DayType) {
       this.dayTypes[date] = type
-      this.mode = type === 'full' ? 'full' : 'split'
+      this.program = programOfDay(type)
       await useDb().meta.put({ key: `day:${date}`, value: type })
       await this.saveRoutine()
     },
@@ -219,10 +325,50 @@ export const useWorkoutStore = defineStore('workout', {
       await useDb().meta.put({ key: 'machineMax', value: structuredClone(toRaw(this.machineMax)) })
     },
 
-    async addToSplit(day: SplitDay, exercise: string) {
-      if (this.split[day].includes(exercise)) return
-      this.split[day].push(exercise)
-      await this.saveRoutine()
+    // A brand-new exercise logged on a day joins that day's list (full body lists everything already).
+    async addToDay(type: DayType, exercise: string) {
+      const programId = programOfDay(type)
+      if (programId === FULL_BODY) return
+      if (programId === PPL) {
+        const list = this.split[type as SplitDay]
+        if (list.includes(exercise)) return
+        list.push(exercise)
+        await this.saveRoutine()
+        return
+      }
+      const day = this.dayOf(type)
+      if (!day || day.exercises.includes(exercise)) return
+      day.exercises.push(exercise)
+      await this.savePrograms()
+    },
+
+    // Adds or replaces one of your programs.
+    async saveProgram(program: Program) {
+      const copy = structuredClone(toRaw(program))
+      const i = this.customPrograms.findIndex((p) => p.id === copy.id)
+      if (i >= 0) this.customPrograms[i] = copy
+      else this.customPrograms.push(copy)
+      await this.savePrograms()
+    },
+
+    // Is any date (logged or just picked) set to this program, or to one day of it?
+    isUsed(programId: string, dayId?: string) {
+      return Object.values(this.dayTypes).some((t) => (dayId ? t === dayKey(programId, dayId) : programOfDay(t) === programId))
+    },
+
+    // A program past dates point to is hidden, not removed, so those dates keep their day type.
+    async deleteProgram(id: string) {
+      if (this.isUsed(id)) {
+        const p = this.customPrograms.find((x) => x.id === id)
+        if (p) p.deleted = true
+      } else {
+        this.customPrograms = this.customPrograms.filter((p) => p.id !== id)
+      }
+      await this.savePrograms()
+      if (this.program === id) {
+        this.program = FULL_BODY
+        await this.saveRoutine()
+      }
     },
 
     async remove(id: number) {
@@ -243,13 +389,13 @@ export const useWorkoutStore = defineStore('workout', {
     },
 
     // Throws before touching the database if the file isn't a Workout Log backup.
-    // Meals and foods are only replaced when the file has them, so an older
-    // workouts-only backup leaves the diet log alone. Same for machine maxes.
+    // Meals, foods, machine maxes, programs and day types are only replaced when the file
+    // has them, so an older backup leaves those alone.
     async importJson(json: string) {
       const data = parseBackup(json)
       const db = useDb()
       const strip = <T extends { id?: number }>(list: T[]) => list.map(({ id, ...rest }) => rest as T)
-      await db.transaction('rw', db.entries, db.meals, db.foods, async () => {
+      await db.transaction('rw', db.entries, db.meals, db.foods, db.meta, async () => {
         await db.entries.clear()
         await db.entries.bulkAdd(strip(data.entries))
         if (data.meals) {
@@ -260,11 +406,20 @@ export const useWorkoutStore = defineStore('workout', {
           await db.foods.clear()
           await db.foods.bulkAdd(strip(data.foods))
         }
+        if (data.programs) await db.meta.put({ key: 'programs', value: data.programs })
+        if (data.routine) await db.meta.put({ key: 'routine', value: data.routine })
+        if (data.dayTypes) {
+          await db.meta.where('key').startsWith('day:').delete()
+          await db.meta.bulkPut(Object.entries(data.dayTypes).map(([date, type]) => ({ key: `day:${date}`, value: type })))
+        }
       })
       if (data.machineMax) {
         this.machineMax = { ...data.machineMax }
         await db.meta.put({ key: 'machineMax', value: { ...data.machineMax } })
       }
+      if (data.programs) this.customPrograms = data.programs
+      if (data.routine) this.applyRoutine(data.routine)
+      if (data.dayTypes) this.dayTypes = { ...data.dayTypes }
       this.entries = await db.entries.toArray()
       return data
     },
@@ -272,7 +427,21 @@ export const useWorkoutStore = defineStore('workout', {
     async exportJson() {
       const db = useDb()
       const [meals, foods] = await Promise.all([db.meals.toArray(), db.foods.toArray()])
-      return JSON.stringify({ app: 'workout-log', version: 2, entries: this.entries, meals, foods, machineMax: toRaw(this.machineMax) }, null, 2)
+      return JSON.stringify(
+        {
+          app: 'workout-log',
+          version: 2,
+          entries: this.entries,
+          meals,
+          foods,
+          programs: toRaw(this.customPrograms),
+          dayTypes: toRaw(this.dayTypes),
+          machineMax: toRaw(this.machineMax),
+          routine: this.routineValue()
+        },
+        null,
+        2
+      )
     },
 
     exportMarkdown() {
