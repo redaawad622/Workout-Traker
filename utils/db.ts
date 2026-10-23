@@ -42,6 +42,7 @@ export interface Meal {
 export interface CustomFood {
   id?: number
   name: string
+  ar?: string // not indexed, so adding it needs no schema version
   per100: Nutrients
   servingG?: number
   servingLabel?: string

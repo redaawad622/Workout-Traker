@@ -100,13 +100,46 @@ async function remove() {
 // ---- Custom food ----
 const custom = reactive({
   name: '',
+  ar: '',
+  servingLabel: '',
   basis: '100g' as '100g' | 'serving',
   servingG: undefined as number | undefined,
   values: { kcal: undefined, protein: undefined, carbs: undefined, fat: undefined, fiber: undefined, sugar: undefined, sodium: undefined } as Record<keyof Nutrients, number | undefined>
 })
 function startCustom() {
   custom.name = query.value.trim()
+  custom.ar = ''
+  custom.servingLabel = ''
+  ai.note = ai.error = ''
   step.value = 'custom'
+}
+
+// Optional: ask Claude for the values, then the user checks them in the form before saving.
+const claude = useClaude()
+const ai = reactive({ busy: false, note: '', error: '' })
+async function askClaude() {
+  const name = custom.name.trim()
+  if (!name || ai.busy) return
+  ai.busy = true
+  ai.note = ai.error = ''
+  try {
+    const r = await claude.fillFood(name)
+    custom.name = r.name || name
+    custom.ar = r.ar
+    custom.basis = '100g'
+    custom.servingG = r.servingG || undefined
+    custom.servingLabel = r.servingLabel
+    for (const { key } of NUTRIENTS) custom.values[key] = r.per100[key]
+    ai.note = r.note
+  } catch (e) {
+    ai.error = (e as Error).message
+  } finally {
+    ai.busy = false
+  }
+}
+function askClaudeFor() {
+  startCustom()
+  askClaude()
 }
 const customOk = computed(() => custom.name.trim() && custom.values.kcal != null)
 async function saveCustom() {
@@ -118,9 +151,10 @@ async function saveCustom() {
   if (custom.basis === 'serving' && size) per100 = scale(raw, (100 / size) * 100)
   const saved = await diet.addFood({
     name: custom.name.trim(),
+    ar: custom.ar.trim() || undefined,
     per100,
     servingG: size ?? (custom.basis === 'serving' ? 100 : undefined),
-    servingLabel: size || custom.basis === 'serving' ? 'serving' : undefined,
+    servingLabel: size || custom.basis === 'serving' ? custom.servingLabel.trim() || 'serving' : undefined,
     perServing: custom.basis === 'serving' && !size ? true : undefined
   })
   choose({ ...saved, custom: true })
@@ -170,9 +204,14 @@ const inputCls =
             </li>
           </ul>
         </div>
-        <button type="button" class="btn-outline h-[52px] text-[15px]" @click="startCustom">
-          <i class="ph ph-plus" />{{ query.trim() ? `Add “${query.trim()}” as my food` : 'Add my own food' }}
-        </button>
+        <div class="flex gap-2">
+          <button type="button" class="btn-outline h-[52px] flex-1 text-[15px]" @click="startCustom">
+            <i class="ph ph-plus" />{{ query.trim() ? `Add “${query.trim()}”` : 'Add my own food' }}
+          </button>
+          <button v-if="query.trim()" type="button" class="btn-outline h-[52px] flex-1 text-[15px]" @click="askClaudeFor">
+            <i class="ph ph-sparkle text-accent-400" />Ask Claude
+          </button>
+        </div>
       </template>
 
       <!-- ========== Amount ========== -->
@@ -288,7 +327,22 @@ const inputCls =
           </button>
           <span class="text-xl font-medium">My food</span>
         </div>
-        <input v-model="custom.name" placeholder="Name, e.g. Mom's molokhia" aria-label="Food name" :class="inputCls" />
+        <div class="flex gap-2">
+          <input v-model="custom.name" placeholder="Name, e.g. Mom's molokhia" aria-label="Food name" :class="inputCls" />
+          <button
+            type="button"
+            :disabled="!custom.name.trim() || ai.busy"
+            class="flex h-11 flex-none items-center gap-1.5 rounded-md px-3 text-sm shadow-[inset_0_0_0_1px_theme(colors.accent.DEFAULT)]"
+            :class="custom.name.trim() ? 'text-accent-300' : 'text-neutral-500 opacity-60'"
+            @click="askClaude"
+          >
+            <i class="ph ph-sparkle" :class="ai.busy && 'animate-spin'" />{{ ai.busy ? 'Asking…' : 'Ask Claude' }}
+          </button>
+        </div>
+        <p v-if="ai.error" role="alert" class="text-sm leading-[1.4] text-warn-text">{{ ai.error }}</p>
+        <p v-else-if="ai.note" class="flex gap-2 rounded-md p-3 text-sm leading-[1.4] text-neutral-300 shadow-[inset_0_0_0_1px_theme(colors.neutral.800)]">
+          <i class="ph ph-sparkle flex-none text-accent-400" /><span>Filled by Claude. Check the values, then save. {{ ai.note }}</span>
+        </p>
 
         <div class="flex flex-col gap-2">
           <span class="label">Values are for</span>
