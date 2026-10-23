@@ -3,6 +3,7 @@ import { useDietStore } from '~/stores/diet'
 
 const store = useWorkoutStore()
 const diet = useDietStore()
+useTheme()
 onMounted(async () => {
   await store.load()
   await diet.load(store.latestBodyWeight)

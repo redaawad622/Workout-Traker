@@ -3,6 +3,87 @@
 @tailwind utilities;
 
 @layer base {
+  /* Nocturne: dark, violet accent. The default, and what data-theme="nocturne" picks. */
+  :root {
+    color-scheme: dark;
+    --bg: #161826;
+    --surface: #232532;
+    --ink: #e9e9ed;
+    --neutral-100: #f3f5fe;
+    --neutral-200: #e4e7f5;
+    --neutral-300: #cfd3e5;
+    --neutral-400: #b2b6ca;
+    --neutral-500: #9397ab;
+    --neutral-600: #75798c;
+    --neutral-700: #595d6c;
+    --neutral-800: #3f424d;
+    --neutral-900: #292b31;
+    --accent: #9184d9;
+    --accent-100: #f5f4ff;
+    --accent-200: #e7e5fe;
+    --accent-300: #d2cefd;
+    --accent-400: #b5abfc;
+    --accent-500: #968ae0;
+    --accent-600: #796cbf;
+    --accent-700: #5d5294;
+    --accent-800: #423a6a;
+    --accent-900: #2b2741;
+    --warn: oklch(0.8 0.12 78);
+    --warn-line: oklch(0.72 0.12 78);
+    --warn-border: oklch(0.45 0.07 78);
+    --warn-tint: oklch(0.25 0.035 78);
+    --warn-text: oklch(0.88 0.08 82);
+    --radius-md: 8px;
+    --radius-lg: 14px;
+    /* On a dark ground elevation is a hairline edge plus ambient darkness. */
+    --shadow-sm: 0 0 0 1px #3f424d;
+    --shadow-md: 0 0 0 1px #595d6c, 0 6px 18px rgba(0, 0, 0, 0.55);
+    --shadow-lg: 0 0 0 1px #9397ab, 0 16px 40px rgba(0, 0, 0, 0.65);
+    --weight-medium: 500;
+    --font-sans: Inter, system-ui, sans-serif;
+  }
+
+  /* Daylight: Parchment ground, white cards, one Action Blue. The scales keep Nocturne's
+     roles, so they run the other way: 100–300 are strong text, 800–900 are faint fills. */
+  :root[data-theme='daylight'] {
+    color-scheme: light;
+    --bg: #f5f5f7;
+    --surface: #ffffff;
+    --ink: #1d1d1f;
+    --neutral-100: #1d1d1f;
+    --neutral-200: #1d1d1f;
+    --neutral-300: #333333;
+    --neutral-400: #6e6e73;
+    --neutral-500: #6e6e73;
+    --neutral-600: #8e8e93;
+    --neutral-700: #c7c7cc;
+    --neutral-800: #e0e0e0;
+    --neutral-900: #e8e8ed;
+    --accent: #0066cc;
+    --accent-100: #003a75;
+    --accent-200: #004d99;
+    --accent-300: #0066cc;
+    --accent-400: #0066cc;
+    --accent-500: #0071e3;
+    --accent-600: #4d94db;
+    --accent-700: #0066cc;
+    --accent-800: #d3e5f8;
+    --accent-900: #e8f1fb;
+    --warn: #b26b00;
+    --warn-line: #c98a1a;
+    --warn-border: #e0a040;
+    --warn-tint: #fff4e0;
+    --warn-text: #7a4a00;
+    --radius-md: 10px;
+    --radius-lg: 18px;
+    /* No drop shadows: white on Parchment carries the card, a soft ring marks controls. */
+    --shadow-sm: 0 0 0 1px rgba(0, 0, 0, 0.08);
+    --shadow-md: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 6px 18px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 0 0 1px rgba(0, 0, 0, 0.1), 0 16px 40px rgba(0, 0, 0, 0.14);
+    --weight-medium: 600;
+    --font-sans: -apple-system, system-ui, Inter, sans-serif;
+  }
+
   html,
   body {
     @apply bg-bg font-sans text-ink antialiased;

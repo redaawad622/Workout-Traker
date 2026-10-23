@@ -1,63 +1,49 @@
 import type { Config } from 'tailwindcss'
 
-// Nocturne design tokens (see the Claude Design handoff). Dark only.
+// Theme tokens. Two themes, Nocturne (dark) and Daylight (light): values live in assets/css/main.css.
 export default {
   content: ['./components/**/*.vue', './pages/**/*.vue', './app.vue', './utils/**/*.ts'],
   theme: {
     extend: {
+      // Every color is a CSS variable; assets/css/main.css gives each theme its values.
       colors: {
-        bg: '#161826',
-        surface: '#232532',
-        ink: '#e9e9ed',
-        neutral: {
-          100: '#f3f5fe',
-          200: '#e4e7f5',
-          300: '#cfd3e5',
-          400: '#b2b6ca',
-          500: '#9397ab',
-          600: '#75798c',
-          700: '#595d6c',
-          800: '#3f424d',
-          900: '#292b31'
-        },
+        bg: 'var(--bg)',
+        surface: 'var(--surface)',
+        ink: 'var(--ink)',
+        neutral: Object.fromEntries([100, 200, 300, 400, 500, 600, 700, 800, 900].map((n) => [n, `var(--neutral-${n})`])),
         accent: {
-          DEFAULT: '#9184d9',
-          100: '#f5f4ff',
-          200: '#e7e5fe',
-          300: '#d2cefd',
-          400: '#b5abfc',
-          500: '#968ae0',
-          600: '#796cbf',
-          700: '#5d5294',
-          800: '#423a6a',
-          900: '#2b2741'
+          DEFAULT: 'var(--accent)',
+          ...Object.fromEntries([100, 200, 300, 400, 500, 600, 700, 800, 900].map((n) => [n, `var(--accent-${n})`]))
         },
         // Amber for warnings: unverified rows, destructive confirms, import errors.
         warn: {
-          DEFAULT: 'oklch(0.80 0.12 78)',
-          line: 'oklch(0.72 0.12 78)',
-          border: 'oklch(0.45 0.07 78)',
-          tint: 'oklch(0.25 0.035 78)',
-          text: 'oklch(0.88 0.08 82)'
+          DEFAULT: 'var(--warn)',
+          line: 'var(--warn-line)',
+          border: 'var(--warn-border)',
+          tint: 'var(--warn-tint)',
+          text: 'var(--warn-text)'
         }
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif']
+        sans: 'var(--font-sans)'
       },
       borderRadius: {
         sm: '4px',
-        md: '8px',
-        lg: '14px',
+        md: 'var(--radius-md)',
+        lg: 'var(--radius-lg)',
         xl: '20px',
         sheet: '24px'
       },
       boxShadow: {
-        // On a dark ground elevation is a hairline edge plus ambient darkness.
-        sm: '0 0 0 1px #3f424d',
-        md: '0 0 0 1px #595d6c, 0 6px 18px rgba(0,0,0,0.55)',
-        lg: '0 0 0 1px #9397ab, 0 16px 40px rgba(0,0,0,0.65)',
-        hairline: '0 1px 0 #3f424d',
-        'hairline-dim': '0 1px 0 #292b31'
+        sm: 'var(--shadow-sm)',
+        md: 'var(--shadow-md)',
+        lg: 'var(--shadow-lg)',
+        hairline: '0 1px 0 var(--neutral-800)',
+        'hairline-dim': '0 1px 0 var(--neutral-900)'
+      },
+      fontWeight: {
+        // Nocturne's medium is 500; Daylight runs headings and emphasis at 600.
+        medium: 'var(--weight-medium)'
       }
     }
   }
