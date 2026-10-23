@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { Entry } from '~/utils/db'
+import type { AiExercise } from '~/utils/ai'
+import { DAY_LABELS, SPLIT_DAYS } from '~/utils/exercises'
 import { splitName, weightText } from '~/utils/format'
 
 // Bottom sheet listing the exercises still left for the day, in training order.
@@ -10,12 +12,37 @@ defineProps<{
   leftCount: number
   lastOf: (name: string) => Entry | undefined
 }>()
-const emit = defineEmits<{ close: []; select: [name: string] }>()
+const emit = defineEmits<{ close: []; select: [name: string, info?: AiExercise] }>()
 
 const custom = ref('')
 function add() {
   const name = custom.value.trim()
   if (name) emit('select', name)
+}
+
+// Optional: Claude tidies the name and says which day and muscles it is; the user checks it first.
+const claude = useClaude()
+const ai = reactive({ busy: false, error: '', result: null as AiExercise | null })
+async function askClaude() {
+  const name = custom.value.trim()
+  if (!name || ai.busy) return
+  ai.busy = true
+  ai.error = ''
+  ai.result = null
+  try {
+    ai.result = await claude.fillExercise(name)
+  } catch (e) {
+    ai.error = (e as Error).message
+  } finally {
+    ai.busy = false
+  }
+}
+function useResult() {
+  const r = ai.result
+  if (r?.name.trim()) emit('select', r.name.trim(), { ...r, name: r.name.trim() })
+}
+const EQUIPMENT: Record<AiExercise['equipment'], string> = {
+  machine: 'Machine', cable: 'Cable', dumbbells: 'Dumbbells', barbell: 'Barbell', bodyweight: 'Bodyweight', other: 'Other'
 }
 </script>
 
@@ -82,13 +109,56 @@ function add() {
         </template>
       </div>
 
+      <!-- Claude's suggestion, editable before it's used -->
+      <div v-if="ai.result" class="flex flex-col gap-3 rounded-lg p-3.5 shadow-[inset_0_0_0_1px_theme(colors.accent.700)]">
+        <span class="flex items-center gap-1.5 text-xs font-medium uppercase tracking-[0.06em] text-accent-400"><i class="ph ph-sparkle" />Claude suggests</span>
+        <input v-model="ai.result.name" aria-label="Exercise name" class="h-11 rounded-md bg-bg px-3 text-[15px] shadow-sm focus:shadow-[0_0_0_1px_theme(colors.accent.DEFAULT)]" />
+        <span class="text-sm text-neutral-300">{{ EQUIPMENT[ai.result.equipment] }} · {{ ai.result.muscles.join(', ') }}</span>
+        <span v-if="ai.result.tip" class="text-xs leading-[1.4] text-neutral-400">{{ ai.result.tip }}</span>
+        <div class="grid grid-cols-3 gap-1 rounded-md bg-neutral-900 p-[3px]" role="radiogroup" aria-label="Split day">
+          <button
+            v-for="d in SPLIT_DAYS"
+            :key="d"
+            type="button"
+            role="radio"
+            :aria-checked="ai.result.splitDay === d"
+            class="flex h-[34px] items-center justify-center rounded-[6px] text-[13px]"
+            :class="ai.result.splitDay === d ? 'bg-accent-800 font-medium text-accent-200' : 'text-neutral-400'"
+            @click="ai.result.splitDay = d"
+          >
+            {{ DAY_LABELS[d] }}
+          </button>
+        </div>
+        <label class="flex items-center justify-between text-[15px]">
+          Weight is per dumbbell
+          <input v-model="ai.result.perDumbbell" type="checkbox" class="size-5 accent-[theme(colors.accent.DEFAULT)]" />
+        </label>
+        <div class="flex gap-2">
+          <button type="button" class="h-11 flex-1 rounded-md bg-neutral-900 text-[15px] active:bg-neutral-800" @click="ai.result = null">Discard</button>
+          <button type="button" class="h-11 flex-1 rounded-md bg-accent-900 text-[15px] font-medium text-accent-100 shadow-[inset_0_0_0_1px_theme(colors.accent.DEFAULT)]" @click="useResult">
+            Use it
+          </button>
+        </div>
+      </div>
+      <p v-if="ai.error" role="alert" class="text-sm leading-[1.4] text-warn-text">{{ ai.error }}</p>
+
       <form class="flex gap-2" @submit.prevent="add">
-        <label class="flex h-[52px] flex-1 items-center gap-2 rounded-md bg-bg px-3.5 shadow-sm focus-within:shadow-[0_0_0_1px_theme(colors.accent.DEFAULT)]">
+        <label class="flex h-[52px] min-w-0 flex-1 items-center gap-2 rounded-md bg-bg px-3.5 shadow-sm focus-within:shadow-[0_0_0_1px_theme(colors.accent.DEFAULT)]">
           <i class="ph ph-plus text-neutral-500" />
           <input v-model="custom" placeholder="New exercise name" class="min-w-0 flex-1 bg-transparent text-[15px] placeholder:text-neutral-500" />
         </label>
         <button
-          class="h-[52px] w-[72px] rounded-md text-[15px]"
+          type="button"
+          aria-label="Ask Claude"
+          :disabled="!custom.trim() || ai.busy"
+          class="flex h-[52px] w-[52px] flex-none items-center justify-center rounded-md text-xl"
+          :class="custom.trim() ? 'text-accent-300 shadow-[inset_0_0_0_1px_theme(colors.accent.DEFAULT)]' : 'text-neutral-500 shadow-[inset_0_0_0_1px_theme(colors.neutral.700)]'"
+          @click="askClaude"
+        >
+          <i class="ph ph-sparkle" :class="ai.busy && 'animate-spin'" />
+        </button>
+        <button
+          class="h-[52px] w-16 flex-none rounded-md text-[15px]"
           :class="custom.trim() ? 'text-accent-300 shadow-[inset_0_0_0_1px_theme(colors.accent.DEFAULT)]' : 'text-neutral-400 shadow-[inset_0_0_0_1px_theme(colors.neutral.700)]'"
         >
           Add

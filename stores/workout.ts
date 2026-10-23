@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import type { CustomFood, Entry, Meal } from '~/utils/db'
 import { SEED_ENTRIES } from '~/utils/seed'
 import { toKg, type Unit } from '~/utils/units'
+import type { AiExercise } from '~/utils/ai'
 import { ALTERNATIVE_GROUPS, DEFAULT_SPLIT, SPLIT_DAYS, slotsOf, type DayType, type SplitDay } from '~/utils/exercises'
 
 const SOURCES = ['assessment', 'logged', 'unverified']
@@ -60,7 +61,9 @@ export const useWorkoutStore = defineStore('workout', {
     split: structuredClone(DEFAULT_SPLIT) as Record<SplitDay, string[]>,
     // Which kind of day each date was trained as, keyed by YYYY-MM-DD (meta keys "day:<date>").
     dayTypes: {} as Record<string, DayType>,
-    machineMax: {} as MachineMax
+    machineMax: {} as MachineMax,
+    // What Claude said about exercises added with "Ask Claude" (meta key "exerciseInfo").
+    exerciseInfo: {} as Record<string, AiExercise>
   }),
 
   getters: {
@@ -182,7 +185,14 @@ export const useWorkoutStore = defineStore('workout', {
       for (const m of await db.meta.where('key').startsWith('day:').toArray()) {
         this.dayTypes[m.key.slice(4)] = m.value as DayType
       }
+      const info = (await db.meta.get('exerciseInfo'))?.value as Record<string, AiExercise> | undefined
+      if (info) this.exerciseInfo = info
       this.ready = true
+    },
+
+    async saveExerciseInfo(name: string, info: AiExercise) {
+      this.exerciseInfo[name] = info
+      await useDb().meta.put({ key: 'exerciseInfo', value: structuredClone(toRaw(this.exerciseInfo)) })
     },
 
     async add(entry: Entry) {
