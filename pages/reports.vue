@@ -23,6 +23,8 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
       </NuxtLink>
     </div>
 
+    <ShareDay />
+
     <section v-for="p in rows" :key="p.key" class="flex flex-col gap-2">
       <span class="label">{{ p.label }}</span>
       <div class="card tnum grid grid-cols-2">
