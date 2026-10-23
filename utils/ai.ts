@@ -1,4 +1,4 @@
-// What Claude fills in for a new food or exercise, and how the app asks for it.
+// What an AI app fills in for a new food or exercise, and how the app asks for it.
 import type { Nutrients } from './nutrition'
 import type { SplitDay } from './exercises'
 
@@ -8,7 +8,7 @@ export interface AiFood {
   per100: Nutrients // per 100 g as eaten
   servingG: number // a typical serving in grams
   servingLabel: string // "plate", "piece", "cup"…
-  note: string // assumptions Claude made, shown before saving
+  note: string // assumptions the AI made, shown before saving
 }
 
 export type Equipment = 'machine' | 'cable' | 'dumbbells' | 'barbell' | 'bodyweight' | 'other'
@@ -22,8 +22,8 @@ export interface AiExercise {
   tip: string // one short form cue
 }
 
-// ---- Asking the Claude app ----
-// The question goes to the Claude app through the share sheet; the user copies Claude's reply back
+// ---- Asking an AI app ----
+// The question goes to the user's AI app through the share sheet; the user copies its reply back
 // and the app reads the JSON in it. Nothing is sent anywhere by this app itself.
 
 export function foodPrompt(name: string) {
@@ -40,15 +40,15 @@ Reply with only this JSON, filled in:
 {"name": "tidy name, with \\" — \\" and the equipment when it matters, e.g. \\"Hammer Curl — Dumbbells\\"", "splitDay": "push | pull | legs", "muscles": ["main muscle first"], "equipment": "machine | cable | dumbbells | barbell | bodyweight | other", "perDumbbell": true or false (true only when the weight is one dumbbell per hand), "tip": "one short form cue"}`
 }
 
-// Finds the first {...} in Claude's reply (it may wrap it in a code block or add a sentence).
+// Finds the first {...} in the AI's reply (it may wrap it in a code block or add a sentence).
 function jsonIn(text: string): any {
   const start = text.indexOf('{')
   const end = text.lastIndexOf('}')
-  if (start < 0 || end <= start) throw new Error("Couldn't find Claude's answer in that text. Copy the whole reply and try again.")
+  if (start < 0 || end <= start) throw new Error("Couldn't find the AI's answer in that text. Copy the whole reply and try again.")
   try {
     return JSON.parse(text.slice(start, end + 1).replace(/[“”]/g, '"'))
   } catch {
-    throw new Error("Claude's answer wasn't in the expected format. Ask Claude to reply with only the JSON.")
+    throw new Error("The answer wasn't in the expected format. Ask the AI to reply with only the JSON.")
   }
 }
 

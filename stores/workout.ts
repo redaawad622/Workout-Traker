@@ -103,7 +103,7 @@ export const useWorkoutStore = defineStore('workout', {
     // Which kind of day each date was trained as, keyed by YYYY-MM-DD (meta keys "day:<date>").
     dayTypes: {} as Record<string, DayType>,
     machineMax: {} as MachineMax,
-    // What Claude said about exercises added with "Ask Claude" (meta key "exerciseInfo").
+    // What the AI said about exercises added with "Ask AI" (meta key "exerciseInfo").
     exerciseInfo: {} as Record<string, AiExercise>
   }),
 

@@ -4,10 +4,10 @@ import { SLOTS, NUTRIENTS, fmtN, plural } from '~/utils/nutrition'
 import { volumeKg, grouped } from '~/utils/reports'
 import { mealTotals, useDietStore } from '~/stores/diet'
 
-// Sends one day's workouts and meals to the Claude app as text, with an optional question.
+// Sends one day's workouts and meals to any AI app as text, with an optional question.
 const store = useWorkoutStore()
 const diet = useDietStore()
-const claude = useClaude()
+const ai = useAi()
 
 const date = ref(todayISO())
 const question = ref('')
@@ -68,14 +68,14 @@ function buildReport(d: string) {
 }
 
 async function share() {
-  const how = await claude.share(buildReport(date.value))
-  status.value = how === 'shared' ? '' : 'Report copied. Paste it in the Claude app and ask away.'
+  const how = await ai.share(buildReport(date.value))
+  status.value = how === 'shared' ? '' : 'Report copied. Paste it in your AI app and ask away.'
 }
 </script>
 
 <template>
   <section class="flex flex-col gap-2">
-    <span class="label">Ask Claude about a day</span>
+    <span class="label">Ask AI about a day</span>
     <div class="card flex flex-col gap-3 p-3.5">
       <label class="flex items-center justify-between gap-3 text-[15px]">
         Day
@@ -85,7 +85,7 @@ async function share() {
         v-model="question"
         rows="2"
         placeholder="Your question (optional), e.g. How was my protein? What should I eat tonight?"
-        aria-label="Question for Claude"
+        aria-label="Question for the AI"
         class="rounded-md bg-bg px-3 py-2 text-sm shadow-sm placeholder:text-neutral-600 focus:shadow-[0_0_0_1px_theme(colors.accent.DEFAULT)]"
       />
       <button
@@ -93,10 +93,10 @@ async function share() {
         class="flex h-11 items-center justify-center gap-1.5 rounded-md text-[15px] text-accent-300 shadow-[inset_0_0_0_1px_theme(colors.accent.DEFAULT)] active:bg-accent-900"
         @click="share"
       >
-        <i class="ph ph-sparkle" />Share day with Claude
+        <i class="ph ph-sparkle" />Share day with AI
       </button>
       <span v-if="status" role="status" class="text-xs text-neutral-400">{{ status }}</span>
-      <span class="text-xs leading-[1.45] text-neutral-500">Sends that day's workouts and meals as text to the Claude app. Nothing is sent anywhere else.</span>
+      <span class="text-xs leading-[1.45] text-neutral-500">Sends that day's workouts and meals as text to the AI app you pick. Nothing is sent anywhere else.</span>
     </div>
   </section>
 </template>

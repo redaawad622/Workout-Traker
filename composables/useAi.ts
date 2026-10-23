@@ -1,8 +1,8 @@
 import { Capacitor } from '@capacitor/core'
 
-// Hands a question to the Claude app and reads its reply back from the clipboard.
-// The question is also copied, so it can be pasted into Claude if Claude isn't in the share sheet.
-export const useClaude = () => ({
+// Hands a question to any AI app (through the share sheet) and reads its reply back from the clipboard.
+// The question is also copied, so it can be pasted into an AI app that isn't in the share sheet.
+export const useAi = () => ({
   async share(text: string): Promise<'shared' | 'copied'> {
     await navigator.clipboard?.writeText(text).catch(() => {})
     try {
