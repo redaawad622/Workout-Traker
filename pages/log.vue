@@ -2,7 +2,8 @@
 import type { Unit } from '~/utils/units'
 import type { Entry } from '~/utils/db'
 import { alternativesOf, DAY_LABELS, slotsOf, type DayType } from '~/utils/exercises'
-import { convertedFull, daysBetween, fmtDay, kgOf, relativeDay, splitName, todayISO } from '~/utils/format'
+import { convertedFull, daysBetween, fixed1, fmtDay, kgOf, relativeDay, splitName, todayISO } from '~/utils/format'
+import { MAX_SESSIONS_TO_SWITCH } from '~/stores/workout'
 
 const store = useWorkoutStore()
 
@@ -119,6 +120,25 @@ const vsLast = computed(() => {
   if (r === 0) return { text: 'same as last', up: false }
   return { text: `${r > 0 ? '+' : '−'}${Math.abs(r)}${suffix} vs last`, up: r > 0 }
 })
+
+// Machine max: the heaviest the machine's stack goes. Doubles as the target.
+const max = computed(() => store.machineMax[name.value])
+const maxKg = computed(() => (max.value ? kgOf(max.value) : 0))
+const lastPct = computed(() => (last.value && maxKg.value ? Math.min(100, Math.round((kgOf(last.value) / maxKg.value) * 100)) : 0))
+const atMaxCount = computed(() => store.datesAtMax(name.value).length)
+const atMaxNow = computed(() => !!form.weight && !!maxKg.value && kgOf({ weight: form.weight, unit: form.unit }) >= maxKg.value - 0.1)
+
+const maxForm = reactive({ open: false, weight: undefined as number | undefined, unit: 'lbs' as Unit })
+watch(name, () => (maxForm.open = false))
+function editMax() {
+  maxForm.weight = max.value?.weight
+  maxForm.unit = max.value?.unit ?? form.unit
+  maxForm.open = true
+}
+async function saveMax(weight = maxForm.weight) {
+  await store.setMachineMax(name.value, weight, maxForm.unit)
+  maxForm.open = false
+}
 
 const saved = ref('')
 let savedTimer: ReturnType<typeof setTimeout> | undefined
@@ -375,6 +395,85 @@ const segment = (s: string) =>
           <div v-else class="flex items-center gap-2.5 rounded-md p-3 text-sm leading-[1.4] text-neutral-300 shadow-[inset_0_0_0_1px_theme(colors.neutral.800)]">
             <i class="ph ph-sparkle text-xl text-accent-400" />No previous log. Today's weight becomes the one to beat.
           </div>
+
+          <!-- Machine max (target) -->
+          <div v-if="maxForm.open" class="flex flex-col gap-2.5 pt-3.5 shadow-[0_-1px_0_theme(colors.neutral.800)]">
+            <span class="label">Machine max · heaviest the stack goes</span>
+            <div class="flex items-center gap-2">
+              <label class="tnum flex h-11 min-w-0 flex-1 items-center gap-1.5 rounded-md bg-neutral-900 px-3 text-base focus-within:shadow-[0_0_0_1px_theme(colors.accent.DEFAULT)]">
+                <input
+                  v-model.number="maxForm.weight"
+                  type="number"
+                  step="any"
+                  inputmode="decimal"
+                  aria-label="Machine max weight"
+                  placeholder="0"
+                  class="w-full min-w-0 bg-transparent [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+                  @keydown.enter.prevent="saveMax()"
+                />
+              </label>
+              <div class="flex rounded-md bg-neutral-900 p-[3px]" role="radiogroup" aria-label="Machine max unit">
+                <button
+                  v-for="u in (['lbs', 'kg'] as Unit[])"
+                  :key="u"
+                  type="button"
+                  role="radio"
+                  :aria-checked="maxForm.unit === u"
+                  class="flex h-[38px] w-[46px] items-center justify-center rounded-[6px] text-sm"
+                  :class="maxForm.unit === u ? 'bg-accent-800 font-medium text-accent-200' : 'text-neutral-400'"
+                  @click="maxForm.unit = u"
+                >
+                  {{ u }}
+                </button>
+              </div>
+            </div>
+            <div class="flex gap-2">
+              <button type="button" class="btn-outline h-11 flex-1 text-sm disabled:opacity-40" :disabled="!maxForm.weight" @click="saveMax()">
+                <i class="ph ph-check" />Save max
+              </button>
+              <button v-if="max" type="button" class="btn-outline h-11 px-3.5 text-sm" @click="saveMax(undefined)">
+                <i class="ph ph-trash" />Clear
+              </button>
+              <button type="button" class="h-11 px-3.5 text-sm text-neutral-400" @click="maxForm.open = false">Cancel</button>
+            </div>
+          </div>
+          <button
+            v-else-if="max"
+            type="button"
+            class="flex flex-col gap-2 pt-3.5 text-left shadow-[0_-1px_0_theme(colors.neutral.800)]"
+            @click="editMax"
+          >
+            <span class="flex w-full items-center justify-between gap-3">
+              <span class="label">Machine max · target</span>
+              <span class="tnum text-sm">
+                {{ max.weight }} {{ max.unit }}<span class="text-neutral-400"> ≈ {{ convertedFull(max) }}</span>
+                <i class="ph ph-pencil-simple ml-1 text-neutral-500" />
+              </span>
+            </span>
+            <span v-if="last" class="h-1.5 w-full overflow-hidden rounded-[3px] bg-neutral-900">
+              <span class="block h-full rounded-[3px]" :class="lastPct >= 100 ? 'bg-accent-300' : 'bg-accent'" :style="{ width: `${lastPct}%` }" />
+            </span>
+            <span v-if="last" class="tnum text-[13px] text-neutral-400">
+              Last time {{ fixed1(kgOf(last)) }} of {{ fixed1(maxKg) }} kg · {{ lastPct }}%<template v-if="atMaxCount"> · at max {{ atMaxCount }}×</template>
+            </span>
+          </button>
+          <button
+            v-else
+            type="button"
+            class="flex min-h-11 items-center gap-2 pt-3.5 text-sm text-neutral-400 shadow-[0_-1px_0_theme(colors.neutral.800)]"
+            @click="editMax"
+          >
+            <i class="ph ph-plus" />Set machine max
+          </button>
+
+          <p
+            v-if="atMaxCount >= MAX_SESSIONS_TO_SWITCH && !maxForm.open"
+            class="flex gap-2.5 rounded-md bg-warn-tint p-3 text-[13px] leading-[1.45] text-warn-text"
+          >
+            <i class="ph ph-warning flex-none text-lg" />
+            You've hit this machine's max on {{ atMaxCount }} sessions. To keep progressive overload going, switch to a harder exercise
+            (free weights, single-arm or single-leg) or add reps and slow the tempo.
+          </p>
         </div>
 
         <!-- Weight -->
@@ -422,7 +521,7 @@ const segment = (s: string) =>
               </label>
               <span class="tnum mt-1.5 text-sm" :class="form.weight ? 'text-neutral-400' : 'text-neutral-500'">
                 <template v-if="form.weight">
-                  {{ preview }}<template v-if="vsLast"> · <span :class="vsLast.up && 'text-accent-300'">{{ vsLast.text }}</span></template>
+                  {{ preview }}<template v-if="vsLast"> · <span :class="vsLast.up && 'text-accent-300'">{{ vsLast.text }}</span></template><template v-if="atMaxNow"> · <span class="text-accent-300">machine max</span></template>
                 </template>
                 <template v-else>Tap the number to type</template>
               </span>

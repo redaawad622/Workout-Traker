@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import type { CustomFood, Entry, Meal } from '~/utils/db'
 import { SEED_ENTRIES } from '~/utils/seed'
-import { toKg } from '~/utils/units'
+import { toKg, type Unit } from '~/utils/units'
 import { ALTERNATIVE_GROUPS, DEFAULT_SPLIT, SPLIT_DAYS, slotsOf, type DayType, type SplitDay } from '~/utils/exercises'
 
 const SOURCES = ['assessment', 'logged', 'unverified']
@@ -9,10 +9,17 @@ const SOURCES = ['assessment', 'logged', 'unverified']
 const isDate = (d: unknown) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)
 const isNutrients = (n: any) => n && typeof n === 'object' && typeof n.kcal === 'number'
 
+// Heaviest weight a machine's stack goes to, per exercise (meta key "machineMax").
+export type MachineMax = Record<string, { weight: number; unit: Unit }>
+
+// Sessions at the machine max before suggesting a harder exercise.
+export const MAX_SESSIONS_TO_SWITCH = 3
+
 export interface Backup {
   entries: Entry[]
   meals?: Meal[] // absent in backups made before the diet log
   foods?: CustomFood[]
+  machineMax?: MachineMax // absent in backups made before machine maxes
 }
 
 // Accepts the original format (a bare array of entries) and the current one
@@ -35,7 +42,10 @@ export function parseBackup(json: string): Backup {
       (Array.isArray(backup.meals) &&
         backup.meals.every((m) => m && isDate(m.date) && typeof m.name === 'string' && typeof m.grams === 'number' && isNutrients(m.per100)))) &&
     (backup.foods === undefined ||
-      (Array.isArray(backup.foods) && backup.foods.every((f) => f && typeof f.name === 'string' && isNutrients(f.per100))))
+      (Array.isArray(backup.foods) && backup.foods.every((f) => f && typeof f.name === 'string' && isNutrients(f.per100)))) &&
+    (backup.machineMax === undefined ||
+      (typeof backup.machineMax === 'object' &&
+        Object.values(backup.machineMax).every((m: any) => m && typeof m.weight === 'number' && (m.unit === 'lbs' || m.unit === 'kg'))))
   if (!valid) throw new Error('Not a Workout Log backup')
   return backup
 }
@@ -49,7 +59,8 @@ export const useWorkoutStore = defineStore('workout', {
     mode: 'full' as 'full' | 'split',
     split: structuredClone(DEFAULT_SPLIT) as Record<SplitDay, string[]>,
     // Which kind of day each date was trained as, keyed by YYYY-MM-DD (meta keys "day:<date>").
-    dayTypes: {} as Record<string, DayType>
+    dayTypes: {} as Record<string, DayType>,
+    machineMax: {} as MachineMax
   }),
 
   getters: {
@@ -127,6 +138,17 @@ export const useWorkoutStore = defineStore('workout', {
         this.verified.filter((e) => e.exercise === name)
     },
 
+    // Dates (newest first) this exercise was logged at or above its machine max.
+    datesAtMax() {
+      return (name: string): string[] => {
+        const max = this.machineMax[name]
+        if (!max) return []
+        const maxKg = toKg(max.weight, max.unit)
+        // 0.1 kg slack so a lbs log vs a kg max still counts after rounding.
+        return [...new Set(this.byExercise(name).filter((e) => toKg(e.weight, e.unit) >= maxKg - 0.1).map((e) => e.date))]
+      }
+    },
+
     latestBodyWeight(): number | undefined {
       return this.verified.find((e) => e.bodyWeightKg)?.bodyWeightKg
     },
@@ -156,6 +178,7 @@ export const useWorkoutStore = defineStore('workout', {
       const routine = (await db.meta.get('routine'))?.value as { mode?: 'full' | 'split'; split?: Record<SplitDay, string[]> } | undefined
       if (routine?.mode) this.mode = routine.mode
       if (routine?.split) Object.assign(this.split, routine.split)
+      this.machineMax = ((await db.meta.get('machineMax'))?.value as MachineMax) ?? {}
       for (const m of await db.meta.where('key').startsWith('day:').toArray()) {
         this.dayTypes[m.key.slice(4)] = m.value as DayType
       }
@@ -177,6 +200,13 @@ export const useWorkoutStore = defineStore('workout', {
       this.mode = type === 'full' ? 'full' : 'split'
       await useDb().meta.put({ key: `day:${date}`, value: type })
       await this.saveRoutine()
+    },
+
+    // weight undefined clears the max for that exercise.
+    async setMachineMax(exercise: string, weight: number | undefined, unit: Unit) {
+      if (weight && weight > 0) this.machineMax[exercise] = { weight, unit }
+      else delete this.machineMax[exercise]
+      await useDb().meta.put({ key: 'machineMax', value: structuredClone(toRaw(this.machineMax)) })
     },
 
     async addToSplit(day: SplitDay, exercise: string) {
@@ -204,7 +234,7 @@ export const useWorkoutStore = defineStore('workout', {
 
     // Throws before touching the database if the file isn't a Workout Log backup.
     // Meals and foods are only replaced when the file has them, so an older
-    // workouts-only backup leaves the diet log alone.
+    // workouts-only backup leaves the diet log alone. Same for machine maxes.
     async importJson(json: string) {
       const data = parseBackup(json)
       const db = useDb()
@@ -221,6 +251,10 @@ export const useWorkoutStore = defineStore('workout', {
           await db.foods.bulkAdd(strip(data.foods))
         }
       })
+      if (data.machineMax) {
+        this.machineMax = { ...data.machineMax }
+        await db.meta.put({ key: 'machineMax', value: { ...data.machineMax } })
+      }
       this.entries = await db.entries.toArray()
       return data
     },
@@ -228,7 +262,7 @@ export const useWorkoutStore = defineStore('workout', {
     async exportJson() {
       const db = useDb()
       const [meals, foods] = await Promise.all([db.meals.toArray(), db.foods.toArray()])
-      return JSON.stringify({ app: 'workout-log', version: 2, entries: this.entries, meals, foods }, null, 2)
+      return JSON.stringify({ app: 'workout-log', version: 2, entries: this.entries, meals, foods, machineMax: toRaw(this.machineMax) }, null, 2)
     },
 
     exportMarkdown() {
