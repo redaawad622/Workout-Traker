@@ -1,8 +1,8 @@
 <script setup lang="ts" generic="T">
-// "Ask Claude" in two taps: send the question to the Claude app, then paste its reply back.
+// "Ask AI" in two taps: send the question to any AI app, then paste its reply back.
 const props = defineProps<{ prompt: string; parse: (text: string) => T; disabled?: boolean }>()
 const emit = defineEmits<{ result: [value: T] }>()
-const claude = useClaude()
+const ai = useAi()
 
 const asked = ref<'' | 'shared' | 'copied'>('')
 const pasted = ref('')
@@ -10,7 +10,7 @@ const error = ref('')
 
 async function ask() {
   error.value = ''
-  asked.value = await claude.share(props.prompt)
+  asked.value = await ai.share(props.prompt)
 }
 
 function use(text: string) {
@@ -26,10 +26,10 @@ function use(text: string) {
 
 const box = ref<HTMLTextAreaElement>()
 async function paste() {
-  const text = await claude.readClipboard()
+  const text = await ai.readClipboard()
   if (text.includes('{')) return use(text)
   asked.value ||= 'copied'
-  error.value = text ? "That isn't Claude's answer. Copy Claude's whole reply first." : 'Paste the reply in the box below.'
+  error.value = text ? "That isn't the AI's answer. Copy its whole reply first." : 'Paste the reply in the box below.'
   await nextTick()
   box.value?.focus()
 }
@@ -46,7 +46,7 @@ watch(pasted, (t) => t.includes('}') && use(t))
         :class="disabled ? 'text-neutral-500 opacity-60' : 'text-accent-300 active:bg-accent-900'"
         @click="ask"
       >
-        <i class="ph ph-sparkle" />Ask Claude
+        <i class="ph ph-sparkle" />Ask AI
       </button>
       <button
         type="button"
@@ -57,16 +57,16 @@ watch(pasted, (t) => t.includes('}') && use(t))
       </button>
     </div>
     <p v-if="asked" class="text-xs leading-[1.45] text-neutral-400">
-      <template v-if="asked === 'shared'">In Claude, copy the whole reply, come back, and tap Paste answer.</template>
-      <template v-else>Question copied. Paste it in the Claude app, copy the whole reply, come back, and tap Paste answer.</template>
+      <template v-if="asked === 'shared'">In your AI app, copy the whole reply, come back, and tap Paste answer.</template>
+      <template v-else>Question copied. Paste it in your AI app (Claude, ChatGPT, Gemini…), copy the whole reply, come back, and tap Paste answer.</template>
     </p>
     <textarea
       v-if="asked"
       ref="box"
       v-model="pasted"
       rows="2"
-      placeholder="…or paste Claude's reply here"
-      aria-label="Claude's reply"
+      placeholder="…or paste the AI's reply here"
+      aria-label="AI reply"
       class="rounded-md bg-bg px-3 py-2 text-sm shadow-sm placeholder:text-neutral-600 focus:shadow-[0_0_0_1px_theme(colors.accent.DEFAULT)]"
     />
     <p v-if="error" role="alert" class="text-sm leading-[1.4] text-warn-text">{{ error }}</p>

@@ -18,7 +18,8 @@ The iOS project lives in `ios/` (bundle id `com.redaawad.workoutlog`).
 The native app keeps its own storage, separate from the Safari / home-screen PWA.
 Move data between them with Export backup and Import on the Data tab.
 
-## Ask Claude (optional)
-"Ask Claude" sends a ready-made question about a new food or exercise to the Claude app through
-the share sheet (or copies it). Copy Claude's whole reply, come back, and tap "Paste answer": the
-app reads the JSON in the reply and fills the form for you to check. No API key or server is involved.
+## Ask AI (optional)
+"Ask AI" sends a ready-made question about a new food or exercise to whichever AI app you use
+(Claude, ChatGPT, Gemini…) through the share sheet, and copies it too. Copy the AI's whole reply,
+come back, and tap "Paste answer": the app reads the JSON in the reply and fills the form for you to
+check. "Share day with AI" on Reports sends a day's workouts and meals the same way. No API key or server.

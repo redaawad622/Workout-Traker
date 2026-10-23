@@ -115,9 +115,9 @@ function startCustom() {
   step.value = 'custom'
 }
 
-// Optional: ask the Claude app for the values, then the user checks them in the form before saving.
+// Optional: ask an AI app for the values, then the user checks them in the form before saving.
 const aiNote = ref('')
-function fillFromClaude(r: AiFood) {
+function fillFromAi(r: AiFood) {
   custom.name = r.name || custom.name
   custom.ar = r.ar
   custom.basis = '100g'
@@ -308,9 +308,9 @@ const inputCls =
           <span class="text-xl font-medium">My food</span>
         </div>
         <input v-model="custom.name" placeholder="Name, e.g. Mom's molokhia" aria-label="Food name" :class="[inputCls, 'flex-none']" />
-        <ClaudeAsk :prompt="foodPrompt(custom.name.trim())" :parse="parseFood" :disabled="!custom.name.trim()" @result="fillFromClaude" />
+        <AskAi :prompt="foodPrompt(custom.name.trim())" :parse="parseFood" :disabled="!custom.name.trim()" @result="fillFromAi" />
         <p v-if="aiNote" class="flex gap-2 rounded-md p-3 text-sm leading-[1.4] text-neutral-300 shadow-[inset_0_0_0_1px_theme(colors.neutral.800)]">
-          <i class="ph ph-sparkle flex-none text-accent-400" /><span>Filled by Claude. Check the values, then save. {{ aiNote }}</span>
+          <i class="ph ph-sparkle flex-none text-accent-400" /><span>Filled by AI. Check the values, then save. {{ aiNote }}</span>
         </p>
 
         <div class="flex flex-col gap-2">

@@ -20,7 +20,7 @@ function add() {
   if (name) emit('select', name)
 }
 
-// Optional: the Claude app tidies the name and says which day and muscles it is; the user checks it first.
+// Optional: an AI app tidies the name and says which day and muscles it is; the user checks it first.
 const ai = reactive({ result: null as AiExercise | null })
 function useResult() {
   const r = ai.result
@@ -94,9 +94,9 @@ const EQUIPMENT: Record<AiExercise['equipment'], string> = {
         </template>
       </div>
 
-      <!-- Claude's suggestion, editable before it's used -->
+      <!-- The AI's suggestion, editable before it's used -->
       <div v-if="ai.result" class="flex flex-col gap-3 rounded-lg p-3.5 shadow-[inset_0_0_0_1px_theme(colors.accent.700)]">
-        <span class="flex items-center gap-1.5 text-xs font-medium uppercase tracking-[0.06em] text-accent-400"><i class="ph ph-sparkle" />Claude suggests</span>
+        <span class="flex items-center gap-1.5 text-xs font-medium uppercase tracking-[0.06em] text-accent-400"><i class="ph ph-sparkle" />AI suggests</span>
         <input v-model="ai.result.name" aria-label="Exercise name" class="h-11 rounded-md bg-bg px-3 text-[15px] shadow-sm focus:shadow-[0_0_0_1px_theme(colors.accent.DEFAULT)]" />
         <span class="text-sm text-neutral-300">{{ EQUIPMENT[ai.result.equipment] }} · {{ ai.result.muscles.join(', ') }}</span>
         <span v-if="ai.result.tip" class="text-xs leading-[1.4] text-neutral-400">{{ ai.result.tip }}</span>
@@ -138,7 +138,7 @@ const EQUIPMENT: Record<AiExercise['equipment'], string> = {
           Add
         </button>
       </form>
-      <ClaudeAsk v-if="custom.trim() && !ai.result" :prompt="exercisePrompt(custom.trim())" :parse="parseExercise" @result="(r) => (ai.result = r)" />
+      <AskAi v-if="custom.trim() && !ai.result" :prompt="exercisePrompt(custom.trim())" :parse="parseExercise" @result="(r) => (ai.result = r)" />
     </div>
   </Teleport>
 </template>

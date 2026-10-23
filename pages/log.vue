@@ -204,7 +204,7 @@ async function save() {
     return
   }
   // A brand-new exercise joins the day's list. On Full body or PPL it goes to the split day
-  // Claude suggested, if Claude filled it in; on your own program it joins this day.
+  // the AI suggested, if AI filled it in; on your own program it joins this day.
   const info = aiInfo.value?.name === name.value ? aiInfo.value : null
   if (!store.exercises.includes(name.value)) {
     await store.addToDay(info && isBuiltIn(programOfDay(dayType.value)) ? info.splitDay : dayType.value, name.value)
@@ -237,7 +237,7 @@ const pickerRows = computed(() =>
     .map((names, i) => ({ n: i + 1, names: names.filter((x) => !covered.value.has(x)) }))
     .filter((r) => r.names.length)
 )
-// Set when the exercise came from "Ask Claude"; saved with its first log.
+// Set when the exercise came from "Ask AI"; saved with its first log.
 const aiInfo = ref<AiExercise | null>(null)
 
 const muscles = computed(() => (store.exerciseInfo[name.value] ?? (aiInfo.value?.name === name.value ? aiInfo.value : null))?.muscles.join(' · '))
