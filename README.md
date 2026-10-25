@@ -24,6 +24,14 @@ Move data between them with Export backup and Import on the Data tab.
 come back, and tap "Paste answer": the app reads the JSON in the reply and fills the form for you to
 check. "Share day with AI" on Reports sends a day's workouts and meals the same way. No API key or server.
 
+## Meal prices and Money Tracker
+When adding a food you can enter what it cost (the last price for that food shows as a hint). Signed in
+with the same account as Money Tracker, a switch adds it there as an expense in the meal's category
+(Breakfast, Lunch, Dinner; snacks go to Other), dated the meal's day. It writes straight into Money
+Tracker's synced expenses (`money_records`), so it shows up there on its next sync. Offline, it waits
+and goes on the next sync. Changing the price later updates that same expense; removing the meal
+leaves the expense in Money Tracker.
+
 ## Account and sync (optional)
 On Data (Reports → Backup) you can sign in with Google or Apple to back up and sync your log
 between devices, for example the iPhone app and the web app. Without an account nothing changes:

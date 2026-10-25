@@ -2,6 +2,7 @@ import Dexie from 'dexie'
 import { Capacitor } from '@capacitor/core'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { useDietStore } from '~/stores/diet'
+import { MONEY_TABLE, type MoneyExpense } from '~/utils/money'
 
 // Optional account: signing in with Google or Apple (through Supabase) backs up and syncs this
 // device's log with the cloud. Without one the app works exactly as before, data on the device only.
@@ -12,6 +13,8 @@ export type SyncState = 'idle' | 'syncing' | 'error'
 // The iPhone app gets the sign-in result back on this URL (CFBundleURLTypes in ios/App/App/Info.plist).
 const NATIVE_REDIRECT = 'com.redaawad.workoutlog://auth-callback'
 const LAST_SYNC = 'lastSync'
+// Meal prices waiting to reach Money Tracker (offline, or a failed upload); sent on the next sync.
+const MONEY_OUTBOX = 'moneyOutbox'
 
 const user = ref<{ id: string; email?: string; provider?: string } | null>(null)
 const providers = ref<Provider[] | null>(null) // null until the project's settings load
@@ -20,6 +23,7 @@ const error = ref('')
 const lastSync = ref<number | null>(null)
 const busy = ref(false) // signing in
 const offline = ref(false) // couldn't reach Supabase to see which sign-in options exist
+const moneyCurrency = ref('') // Money Tracker's currency, shown next to meal prices
 
 let client: SupabaseClient | null = null
 let started = false
@@ -58,6 +62,44 @@ async function loadProviders() {
   }
 }
 
+type Outgoing = { uid: string; data: MoneyExpense }
+
+function outbox(): Outgoing[] {
+  try {
+    return JSON.parse(localStorage.getItem(MONEY_OUTBOX) ?? '[]')
+  } catch {
+    return []
+  }
+}
+function setOutbox(list: Outgoing[]) {
+  try {
+    localStorage.setItem(MONEY_OUTBOX, JSON.stringify(list))
+  } catch {}
+}
+
+// Upserts by uid, so sending the same expense again (an edited price) updates it in Money Tracker.
+async function flushMoney() {
+  const box = outbox()
+  if (!client || !user.value || !box.length) return
+  const rows = box.map((o) => ({ user_id: user.value!.id, kind: 'expenses', uid: o.uid, data: o.data, deleted: false }))
+  const { error: e } = await client.from(MONEY_TABLE).upsert(rows, { onConflict: 'user_id,kind,uid' })
+  if (e) throw e
+  const sent = new Set(box.map((o) => o.uid))
+  setOutbox(outbox().filter((o) => !sent.has(o.uid)))
+}
+
+/** Queue an expense for Money Tracker and try to send it now. */
+function sendToMoney(uid: string, data: MoneyExpense) {
+  setOutbox([...outbox().filter((o) => o.uid !== uid), { uid, data }])
+  flushMoney().catch(() => {})
+}
+
+async function loadMoneyCurrency() {
+  if (!client || !user.value) return
+  const { data } = await client.from(MONEY_TABLE).select('currency:data->>currency').eq('kind', 'settings').eq('uid', 'settings').maybeSingle()
+  moneyCurrency.value = (data as { currency?: string } | null)?.currency ?? ''
+}
+
 async function runSync() {
   if (!client || !user.value) return
   if (running) {
@@ -75,6 +117,9 @@ async function runSync() {
         await store.load()
         await useDietStore().load(store.latestBodyWeight)
       }
+      // Meal prices for Money Tracker shouldn't fail the workout sync; they wait for the next one.
+      await flushMoney().catch(() => {})
+      if (!moneyCurrency.value) await loadMoneyCurrency().catch(() => {})
       lastSync.value = Date.now()
       try {
         localStorage.setItem(LAST_SYNC, String(lastSync.value))
@@ -206,6 +251,8 @@ export function useAccount() {
     lastSync: readonly(lastSync),
     busy: readonly(busy),
     offline: readonly(offline),
+    moneyCurrency: readonly(moneyCurrency),
+    sendToMoney,
     start,
     signIn,
     signOut,
