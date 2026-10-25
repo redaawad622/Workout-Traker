@@ -63,6 +63,17 @@ async function exportBackup() {
 }
 
 const failed = computed(() => status.value && !status.value.ok)
+
+const account = useAccount()
+const providerLabel = { google: 'Google', apple: 'Apple' } as const
+// Shown once at least one sign-in option is turned on in Supabase (or while offline).
+const showAccount = computed(() => account.enabled && (!!account.user.value || !!account.providers.value?.length || account.offline.value))
+const syncedAgo = computed(() => {
+  const t = account.lastSync.value
+  if (!t) return 'Not synced yet'
+  const min = Math.round((Date.now() - t) / 60000)
+  return min < 1 ? 'Synced just now' : min < 60 ? `Synced ${min} min ago` : `Synced ${new Date(t).toLocaleString()}`
+})
 </script>
 
 <template>
@@ -74,13 +85,64 @@ const failed = computed(() => status.value && !status.value.ok)
       <h1 class="text-[28px] font-medium tracking-[-0.01em]">Data</h1>
     </div>
 
-    <div class="flex items-start gap-3">
-      <i class="ph ph-device-mobile flex-none text-2xl text-accent-400" />
+    <div v-if="account.user.value" class="flex items-start gap-3">
+      <i class="ph ph-cloud-check flex-none text-2xl text-accent-400" />
       <div class="flex flex-col gap-1.5">
-        <span class="text-[15px] leading-normal">Your data lives only on this phone. No account, no sync.</span>
-        <span class="text-sm leading-normal text-neutral-400">Export a backup regularly. Deleting the app deletes your log.</span>
+        <span class="text-[15px] leading-normal">Your data lives on this phone and syncs to your account.</span>
+        <span class="text-sm leading-normal text-neutral-400">Sign in on another device to get the same log there.</span>
       </div>
     </div>
+    <div v-else class="flex items-start gap-3">
+      <i class="ph ph-device-mobile flex-none text-2xl text-accent-400" />
+      <div class="flex flex-col gap-1.5">
+        <span class="text-[15px] leading-normal">Your data lives only on this phone<template v-if="!showAccount">. No account, no sync</template>.</span>
+        <span class="text-sm leading-normal text-neutral-400">Export a backup regularly<template v-if="showAccount">, or sign in below to back up and sync</template>. Deleting the app deletes your log.</span>
+      </div>
+    </div>
+
+    <section v-if="showAccount" class="flex flex-col gap-2.5">
+      <h2 class="label">Account <span class="normal-case tracking-normal text-neutral-500">· optional</span></h2>
+      <div v-if="account.user.value" class="card flex flex-col gap-3 p-4">
+        <div class="flex items-center gap-3">
+          <i class="ph ph-user-circle text-[28px] text-accent-400" />
+          <span class="flex min-w-0 flex-1 flex-col">
+            <span class="truncate text-base">{{ account.user.value.email ?? 'Signed in' }}</span>
+            <span class="text-xs text-neutral-400" role="status">
+              <template v-if="account.state.value === 'syncing'">Syncing…</template>
+              <template v-else-if="account.state.value === 'error'">{{ account.error.value }}</template>
+              <template v-else>{{ syncedAgo }}</template>
+            </span>
+          </span>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <button
+            class="flex h-11 items-center justify-center gap-1.5 rounded-md bg-neutral-900 text-sm active:bg-neutral-800 disabled:opacity-60"
+            :disabled="account.state.value === 'syncing'"
+            @click="account.syncNow()"
+          >
+            <i class="ph ph-arrows-clockwise" :class="{ 'animate-spin': account.state.value === 'syncing' }" />Sync now
+          </button>
+          <button class="flex h-11 items-center justify-center gap-1.5 rounded-md text-sm text-neutral-300 shadow-sm active:bg-neutral-900" @click="account.signOut()">
+            <i class="ph ph-sign-out" />Sign out
+          </button>
+        </div>
+        <span class="text-xs leading-normal text-neutral-500">Signing out keeps everything on this phone.</span>
+      </div>
+      <template v-else>
+        <button
+          v-for="p in account.providers.value"
+          :key="p"
+          class="card flex min-h-[52px] items-center justify-center gap-2.5 px-4 text-base active:bg-neutral-900 disabled:opacity-60"
+          :disabled="account.busy.value"
+          @click="account.signIn(p)"
+        >
+          <i class="text-xl" :class="p === 'apple' ? 'ph-fill ph-apple-logo' : 'ph-bold ph-google-logo'" />Continue with {{ providerLabel[p] }}
+        </button>
+        <p v-if="account.offline.value" class="text-sm text-neutral-400">You're offline. Sign-in needs a connection.</p>
+        <p v-if="account.error.value" role="alert" class="text-sm text-warn-text">{{ account.error.value }}</p>
+        <span class="text-xs leading-normal text-neutral-500">Signing in uploads this phone's log and merges it with your account. Nothing here is deleted.</span>
+      </template>
+    </section>
 
     <div
       v-if="status?.ok"

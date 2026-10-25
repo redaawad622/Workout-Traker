@@ -7,6 +7,7 @@ useTheme()
 onMounted(async () => {
   await store.load()
   await diet.load(store.latestBodyWeight)
+  useAccount().start()
 })
 const links = [
   { to: '/', label: 'History', icon: 'clock-counter-clockwise' },

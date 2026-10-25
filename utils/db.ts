@@ -16,6 +16,7 @@ export interface Entry {
   bodyWeightKg?: number
   note?: string
   source: EntrySource
+  uid?: string // stable id across devices, set on first cloud sync
 }
 
 export interface Meta {
@@ -36,6 +37,7 @@ export interface Meal {
   servingLabel?: string
   perServing?: boolean // values are for one serving of unknown weight
   per100: Nutrients
+  uid?: string
 }
 
 // A food the user added themselves (built-in foods live in utils/foods.ts).
@@ -47,6 +49,14 @@ export interface CustomFood {
   servingG?: number
   servingLabel?: string
   perServing?: boolean
+  uid?: string
+}
+
+// What a record looked like the last time this device and the cloud agreed on it
+// (id is "<table>:<uid>"), so a sync can tell which side changed it since.
+export interface Synced {
+  id: string
+  hash: string
 }
 
 class WorkoutDB extends Dexie {
@@ -54,6 +64,7 @@ class WorkoutDB extends Dexie {
   meta!: Table<Meta, string>
   meals!: Table<Meal, number>
   foods!: Table<CustomFood, number>
+  synced!: Table<Synced, string>
 
   constructor() {
     super('workout-log')
@@ -69,6 +80,14 @@ class WorkoutDB extends Dexie {
       meta: 'key',
       meals: '++id, date, name',
       foods: '++id, name'
+    })
+    // v3: optional account sync. Adds one bookkeeping table; existing data is untouched.
+    this.version(3).stores({
+      entries: '++id, date, exercise, source',
+      meta: 'key',
+      meals: '++id, date, name',
+      foods: '++id, name',
+      synced: 'id'
     })
   }
 }
