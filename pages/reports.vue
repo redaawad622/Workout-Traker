@@ -35,9 +35,12 @@ const themeNote = computed(() => themes.find((t) => t.id === choice.value)!.note
   <div class="flex flex-col gap-5">
     <div class="flex items-center justify-between gap-3">
       <h1 class="text-[28px] font-medium tracking-[-0.01em]">Reports</h1>
-      <NuxtLink to="/data" class="flex h-10 items-center gap-1.5 rounded-md px-3 text-sm text-neutral-300 shadow-sm active:bg-neutral-900">
-        <i class="ph ph-database" />Backup
-      </NuxtLink>
+      <div class="flex items-center gap-2">
+        <NuxtLink to="/data" class="flex h-10 items-center gap-1.5 rounded-md px-3 text-sm text-neutral-300 shadow-sm active:bg-neutral-900">
+          <i class="ph ph-database" />Backup
+        </NuxtLink>
+        <AccountButton />
+      </div>
     </div>
 
     <ShareDay />
