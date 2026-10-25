@@ -217,6 +217,8 @@ export async function syncWith(client: SupabaseClient, userId: string): Promise<
         if (h !== null) pushed.push({ id, hash: h })
         continue
       }
+      // Write only what changed, so a sync with nothing to do writes nothing.
+      if (h === (synced[id] ?? null)) continue
       if (h === null) await db.synced.delete(id)
       else await db.synced.put({ id, hash: h })
     }
@@ -229,7 +231,8 @@ export async function syncWith(client: SupabaseClient, userId: string): Promise<
     const { error } = await client.from('records').upsert(chunk, { onConflict: 'user_id,kind,uid' })
     if (error) throw error
   }
-  await db.synced.bulkPut(pushed)
-  await db.synced.bulkDelete(push.filter((r) => r.deleted).map((r) => `${r.kind}:${r.uid}`))
+  if (pushed.length) await db.synced.bulkPut(pushed)
+  const gone = push.filter((r) => r.deleted).map((r) => `${r.kind}:${r.uid}`)
+  if (gone.length) await db.synced.bulkDelete(gone)
   return changed
 }

@@ -97,7 +97,7 @@ async function runSync() {
 
 // Sync a few seconds after the last change, so a burst of logging uploads once.
 function schedule(delay = 4000) {
-  if (!user.value || Date.now() < quietUntil) return
+  if (!user.value || running || Date.now() < quietUntil) return
   clearTimeout(timer)
   timer = setTimeout(runSync, delay)
 }
@@ -149,7 +149,10 @@ async function start() {
     if (offline.value) loadProviders()
     schedule(500)
   })
-  Dexie.on('storagemutated', () => schedule())
+  // Only changes to your log count; the sync's own bookkeeping table never triggers another sync.
+  Dexie.on('storagemutated', (parts) => {
+    if (Object.keys(parts).some((k) => k.startsWith('idb://workout-log/') && !k.startsWith('idb://workout-log/synced/'))) schedule()
+  })
 }
 
 async function signIn(provider: Provider) {
