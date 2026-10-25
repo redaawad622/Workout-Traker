@@ -44,28 +44,42 @@ function pickProgram(id: string) {
 const doneToday = computed(
   () => new Set(store.verified.filter((e) => e.date === form.date).map((e) => e.exercise))
 )
-// Alternatives of something already done today are also off the list (you do one OR the other).
+// Exercises you chose to skip on the selected day.
+const skippedToday = computed(() => new Set(store.skips[form.date] ?? []))
+// Alternatives of something already done or skipped today are also off the list (you do one
+// OR the other, so skipping one skips its either/or slot; use "or" to swap instead).
 const covered = computed(() => {
-  const set = new Set(doneToday.value)
-  for (const e of doneToday.value) alternativesOf(e).forEach((a) => set.add(a))
+  const set = new Set([...doneToday.value, ...skippedToday.value])
+  for (const e of set) alternativesOf(e).forEach((a) => set.add(a))
   return set
 })
 const remaining = computed(() => plan.value.filter((e) => !covered.value.has(e)))
 
-// Chips in training order: done ones plus "skipped" alternatives.
+// Chips in training order: done ones, ones you skipped (tap to take the skip back) and
+// alternatives left out because their sibling was done.
 const chips = computed(() =>
-  store.exercises
+  [...new Set([...plan.value, ...store.exercises])]
     .filter((e) => covered.value.has(e))
-    .map((e) => ({ name: e, skipped: !doneToday.value.has(e) }))
+    .map((e) => ({ name: e, state: doneToday.value.has(e) ? 'done' : skippedToday.value.has(e) ? 'skipped' : 'other' }))
+    // The skipped chip stands for its whole either/or slot.
+    .filter((c) => c.state !== 'other' || !alternativesOf(c.name).some((a) => skippedToday.value.has(a)))
 )
-const skippedCount = computed(() => chips.value.filter((c) => c.skipped).length)
+const skippedCount = computed(() => chips.value.filter((c) => c.state !== 'done').length)
 
 // Day progress by training slot (an either/or pair is one slot).
 const slotState = computed(() =>
-  planSlots.value.map((names) => (names.some((n) => doneToday.value.has(n)) ? 'done' : names.includes(name.value) ? 'current' : 'todo'))
+  planSlots.value.map((names) =>
+    names.some((n) => doneToday.value.has(n))
+      ? 'done'
+      : names.some((n) => skippedToday.value.has(n))
+        ? 'skipped'
+        : names.includes(name.value)
+          ? 'current'
+          : 'todo'
+  )
 )
 const doneSlots = computed(() => slotState.value.filter((s) => s === 'done').length)
-const leftSlots = computed(() => planSlots.value.length - doneSlots.value)
+const leftSlots = computed(() => slotState.value.filter((s) => s === 'current' || s === 'todo').length)
 const currentSlot = computed(() => slotState.value.indexOf('current'))
 
 watch(() => form.date, () => editing.value && stopEdit())
@@ -240,6 +254,14 @@ const pickerRows = computed(() =>
 // Set when the exercise came from "Ask AI"; saved with its first log.
 const aiInfo = ref<AiExercise | null>(null)
 
+// Either/or siblings of the current exercise still open today, for a one-tap swap.
+const swaps = computed(() => (editing.value || form.custom ? [] : alternativesOf(name.value).filter((n) => remaining.value.includes(n))))
+// Same exercise with other equipment (Romanian Deadlift dumbbells / barbell) is labelled by the equipment.
+function swapLabel(n: string) {
+  const [main, kind] = splitName(n)
+  return main === splitName(name.value)[0] && kind ? kind[0].toUpperCase() + kind.slice(1) : short(n)
+}
+
 const muscles = computed(() => (store.exerciseInfo[name.value] ?? (aiInfo.value?.name === name.value ? aiInfo.value : null))?.muscles.join(' · '))
 
 function pick(n: string, info?: AiExercise) {
@@ -254,6 +276,11 @@ function pick(n: string, info?: AiExercise) {
   form.weight = undefined
   if (info) form.perDumbbell = info.perDumbbell
   picking.value = false
+}
+
+// Skip the exercise on screen for this day; the next one comes up.
+function skip() {
+  store.toggleSkip(form.date, name.value)
 }
 
 // All done for the day (until an extra exercise is picked).
@@ -281,6 +308,8 @@ const dayStats = computed(() => {
 const segment = (s: string) =>
   s === 'done'
     ? 'bg-accent'
+    : s === 'skipped'
+      ? 'bg-neutral-900 shadow-[inset_0_0_0_1px_theme(colors.neutral.600)]'
     : s === 'current'
       ? 'bg-neutral-700 shadow-[0_0_0_1px_theme(colors.accent.500)]'
       : 'bg-neutral-900'
@@ -410,6 +439,18 @@ const segment = (s: string) =>
               <span class="text-xs font-medium uppercase tracking-[0.06em] text-accent-400">{{ kicker }}</span>
               <span class="text-[26px] font-medium leading-[1.15] tracking-[-0.01em]">{{ name }}</span>
               <span v-if="muscles" class="text-[13px] text-neutral-400">{{ muscles }}</span>
+              <div v-if="swaps.length" class="flex flex-wrap items-center gap-1.5 pt-1.5">
+                <span class="text-[13px] text-neutral-400">or</span>
+                <button
+                  v-for="n in swaps"
+                  :key="n"
+                  type="button"
+                  class="chip text-neutral-200 shadow-[inset_0_0_0_1px_theme(colors.neutral.700)] active:bg-neutral-900"
+                  @click="pick(n)"
+                >
+                  <i class="ph ph-swap" />{{ swapLabel(n) }}
+                </button>
+              </div>
             </div>
             <button
               v-if="editing"
@@ -420,15 +461,25 @@ const segment = (s: string) =>
             >
               <i class="ph ph-x" />
             </button>
-            <button
-              v-else
-              type="button"
-              aria-label="Change exercise"
-              class="flex size-11 flex-none items-center justify-center rounded-md text-xl text-neutral-300 shadow-sm active:bg-neutral-900"
-              @click="picking = true"
-            >
-              <i class="ph ph-arrows-down-up" />
-            </button>
+            <div v-else class="flex flex-none gap-2">
+              <button
+                v-if="remaining.includes(name) && !form.custom"
+                type="button"
+                aria-label="Skip exercise"
+                class="flex h-11 flex-none items-center gap-1.5 rounded-md px-3 text-sm text-neutral-300 shadow-sm active:bg-neutral-900"
+                @click="skip"
+              >
+                <i class="ph ph-skip-forward" />Skip
+              </button>
+              <button
+                type="button"
+                aria-label="Change exercise"
+                class="flex size-11 flex-none items-center justify-center rounded-md text-xl text-neutral-300 shadow-sm active:bg-neutral-900"
+                @click="picking = true"
+              >
+                <i class="ph ph-arrows-down-up" />
+              </button>
+            </div>
           </div>
 
           <div v-if="last" class="flex items-end justify-between gap-3 pt-3.5 shadow-[0_-1px_0_theme(colors.neutral.800)]">
@@ -622,10 +673,19 @@ const segment = (s: string) =>
 
       <!-- Done on this date -->
       <div v-if="chips.length" class="flex flex-col gap-2.5">
-        <span class="label">Done on this date · tap to edit</span>
+        <span class="label">Done on this date · tap to edit or undo a skip</span>
         <ul class="flex flex-wrap gap-1.5">
           <li v-for="c in chips" :key="c.name">
-            <span v-if="c.skipped" class="chip text-neutral-400 shadow-[inset_0_0_0_1px_theme(colors.neutral.700)]">skipped · {{ short(c.name) }}</span>
+            <button
+              v-if="c.state === 'skipped'"
+              type="button"
+              :aria-label="`Undo skip of ${c.name}`"
+              class="chip text-neutral-400 shadow-[inset_0_0_0_1px_theme(colors.neutral.700)] active:bg-neutral-900"
+              @click="store.toggleSkip(form.date, c.name)"
+            >
+              <i class="ph ph-arrow-counter-clockwise" />skipped · {{ short(c.name) }}
+            </button>
+            <span v-else-if="c.state === 'other'" class="chip text-neutral-400 shadow-[inset_0_0_0_1px_theme(colors.neutral.700)]">skipped · {{ short(c.name) }}</span>
             <button
               v-else
               type="button"

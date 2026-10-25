@@ -4,7 +4,6 @@ import { SEED_ENTRIES } from '~/utils/seed'
 import { toKg, type Unit } from '~/utils/units'
 import type { AiExercise } from '~/utils/ai'
 import {
-  ALTERNATIVE_GROUPS,
   DAY_LABELS,
   DEFAULT_SPLIT,
   FULL_BODY,
@@ -17,7 +16,9 @@ import {
   type DayType,
   type Program,
   type ProgramDay,
-  type SplitDay
+  type SplitDay,
+  withAlternatives,
+  withDefaults
 } from '~/utils/exercises'
 
 const SOURCES = ['assessment', 'logged', 'unverified']
@@ -40,6 +41,7 @@ export interface Backup {
   programs?: Program[]
   dayTypes?: Record<string, DayType>
   routine?: Routine
+  skips?: Record<string, string[]> // absent in backups made before skipping
 }
 
 // Saved in meta key "routine". `mode` is what versions before custom programs read.
@@ -85,7 +87,9 @@ export function parseBackup(json: string): Backup {
     (backup.dayTypes === undefined ||
       (typeof backup.dayTypes === 'object' &&
         Object.entries(backup.dayTypes).every(([d, t]) => isDate(d) && typeof t === 'string'))) &&
-    (backup.routine === undefined || typeof backup.routine === 'object')
+    (backup.routine === undefined || typeof backup.routine === 'object') &&
+    (backup.skips === undefined ||
+      (typeof backup.skips === 'object' && Object.entries(backup.skips).every(([d, l]) => isDate(d) && isStrings(l))))
   if (!valid) throw new Error('Not a Workout Tracker backup')
   return backup
 }
@@ -102,6 +106,8 @@ export const useWorkoutStore = defineStore('workout', {
     customPrograms: [] as Program[],
     // Which kind of day each date was trained as, keyed by YYYY-MM-DD (meta keys "day:<date>").
     dayTypes: {} as Record<string, DayType>,
+    // Exercises skipped on a date, keyed by YYYY-MM-DD (meta keys "skip:<date>").
+    skips: {} as Record<string, string[]>,
     machineMax: {} as MachineMax,
     // What the AI said about exercises added with "Ask AI" (meta key "exerciseInfo").
     exerciseInfo: {} as Record<string, AiExercise>
@@ -114,15 +120,14 @@ export const useWorkoutStore = defineStore('workout', {
         new Set([...s.entries].sort((a, b) => (a.id ?? 0) - (b.id ?? 0)).map((e) => e.exercise))
       )
       // Make sure every alternative shows up, right after its sibling.
-      for (const group of ALTERNATIVE_GROUPS) {
-        const present = group.filter((n) => list.includes(n))
-        if (!present.length) continue
-        let at = Math.max(...present.map((n) => list.indexOf(n)))
-        for (const n of group) {
-          if (!list.includes(n)) list.splice(++at, 0, n)
-        }
-      }
-      return list
+      return withAlternatives(list)
+    },
+
+    // Latest date each exercise was logged (YYYY-MM-DD).
+    lastDone: (s) => {
+      const out: Record<string, string> = {}
+      for (const e of s.entries) if (!out[e.exercise] || e.date > out[e.exercise]) out[e.exercise] = e.date
+      return out
     },
 
     // Training slots in order: alternatives (either/or) share one slot.
@@ -166,7 +171,15 @@ export const useWorkoutStore = defineStore('workout', {
 
     // Exercises planned for a kind of day: full body = everything, in training order.
     planFor() {
-      return (type: DayType) => this.dayOf(type)?.exercises ?? this.exercises
+      // Every alternative is offered, and within an either/or slot the one done most recently
+      // comes first, so the day starts on the one you actually use.
+      return (type: DayType) => {
+        const list = withAlternatives(this.dayOf(type)?.exercises ?? this.exercises)
+        const rank = (n: string) => this.lastDone[n] ?? ''
+        return slotsOf(list).flatMap((slot) =>
+          [...slot].sort((a, b) => (rank(a) === rank(b) ? 0 : rank(a) > rank(b) ? -1 : 1))
+        )
+      }
     },
 
     // Day of a program that follows the most recent logged day of that program before `date`.
@@ -276,6 +289,9 @@ export const useWorkoutStore = defineStore('workout', {
       for (const m of await db.meta.where('key').startsWith('day:').toArray()) {
         this.dayTypes[m.key.slice(4)] = m.value as DayType
       }
+      for (const m of await db.meta.where('key').startsWith('skip:').toArray()) {
+        this.skips[m.key.slice(5)] = m.value as string[]
+      }
       const info = (await db.meta.get('exerciseInfo'))?.value as Record<string, AiExercise> | undefined
       if (info) this.exerciseInfo = info
       this.ready = true
@@ -295,7 +311,9 @@ export const useWorkoutStore = defineStore('workout', {
     applyRoutine(routine: Routine | undefined) {
       if (routine?.program) this.program = routine.program
       else if (routine?.mode) this.program = routine.mode === 'split' ? PPL : FULL_BODY
-      if (routine?.split) Object.assign(this.split, routine.split)
+      if (routine?.split) {
+        for (const d of SPLIT_DAYS) if (routine.split[d]) this.split[d] = withDefaults(routine.split[d], DEFAULT_SPLIT[d])
+      }
     },
 
     routineValue(): Routine {
@@ -316,6 +334,16 @@ export const useWorkoutStore = defineStore('workout', {
       this.program = programOfDay(type)
       await useDb().meta.put({ key: `day:${date}`, value: type })
       await this.saveRoutine()
+    },
+
+    // Skip an exercise for one date, or take the skip back.
+    async toggleSkip(date: string, exercise: string) {
+      const list = this.skips[date] ?? []
+      const next = list.includes(exercise) ? list.filter((n) => n !== exercise) : [...list, exercise]
+      if (next.length) this.skips[date] = next
+      else delete this.skips[date]
+      if (next.length) await useDb().meta.put({ key: `skip:${date}`, value: [...next] })
+      else await useDb().meta.delete(`skip:${date}`)
     },
 
     // weight undefined clears the max for that exercise.
@@ -389,7 +417,7 @@ export const useWorkoutStore = defineStore('workout', {
     },
 
     // Throws before touching the database if the file isn't a Workout Tracker backup.
-    // Meals, foods, machine maxes, programs and day types are only replaced when the file
+    // Meals, foods, machine maxes, programs, day types and skips are only replaced when the file
     // has them, so an older backup leaves those alone.
     async importJson(json: string) {
       const data = parseBackup(json)
@@ -412,6 +440,10 @@ export const useWorkoutStore = defineStore('workout', {
           await db.meta.where('key').startsWith('day:').delete()
           await db.meta.bulkPut(Object.entries(data.dayTypes).map(([date, type]) => ({ key: `day:${date}`, value: type })))
         }
+        if (data.skips) {
+          await db.meta.where('key').startsWith('skip:').delete()
+          await db.meta.bulkPut(Object.entries(data.skips).map(([date, list]) => ({ key: `skip:${date}`, value: list })))
+        }
       })
       if (data.machineMax) {
         this.machineMax = { ...data.machineMax }
@@ -420,6 +452,7 @@ export const useWorkoutStore = defineStore('workout', {
       if (data.programs) this.customPrograms = data.programs
       if (data.routine) this.applyRoutine(data.routine)
       if (data.dayTypes) this.dayTypes = { ...data.dayTypes }
+      if (data.skips) this.skips = { ...data.skips }
       this.entries = await db.entries.toArray()
       return data
     },
@@ -436,6 +469,7 @@ export const useWorkoutStore = defineStore('workout', {
           foods,
           programs: toRaw(this.customPrograms),
           dayTypes: toRaw(this.dayTypes),
+          skips: toRaw(this.skips),
           machineMax: toRaw(this.machineMax),
           routine: this.routineValue()
         },
