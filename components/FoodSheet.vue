@@ -4,11 +4,13 @@ import { matches, type Food } from '~/utils/foods'
 import { fmtN, fmtQty, NUTRIENTS, plural, scale, SLOTS, type MealSlot, type Nutrients } from '~/utils/nutrition'
 import { useDietStore } from '~/stores/diet'
 import { foodPrompt, parseFood, type AiFood } from '~/utils/ai'
+import { MONEY_CATEGORY, mealExpense, newMoneyUid } from '~/utils/money'
 
 // Bottom sheet: search a food → set the amount → add. Opened with a meal it edits that meal instead.
 const props = defineProps<{ date: string; slot: MealSlot; meal?: Meal }>()
 const emit = defineEmits<{ close: []; saved: [text: string] }>()
 const diet = useDietStore()
+const account = useAccount()
 
 const step = ref<'search' | 'amount' | 'custom'>(props.meal ? 'amount' : 'search')
 const slot = ref<MealSlot>(props.meal?.slot ?? props.slot)
@@ -42,8 +44,22 @@ function choose(f: Food) {
   food.value = f
   mode.value = f.servingG ? 'serving' : 'g'
   qty.value = f.servingG ? 1 : 100
+  price.value = lastPrice(f.name)
   step.value = 'amount'
 }
+
+// ---- Price ----
+// Starts at what this food cost last time. With an account, it can go straight to Money Tracker
+// as an expense in the meal's category.
+const price = ref<number | undefined>(props.meal?.price)
+function lastPrice(name: string) {
+  const prev = diet.meals.filter((m) => m.name === name && m.price).sort((a, b) => b.date.localeCompare(a.date) || (b.id ?? 0) - (a.id ?? 0))[0]
+  return prev?.price
+}
+const priced = computed(() => typeof price.value === 'number' && price.value > 0)
+const toMoney = ref(props.meal ? !!props.meal.moneyUid : true)
+const canSend = computed(() => !!account.user.value)
+const moneyCategory = computed(() => MONEY_CATEGORY[slot.value].name)
 
 const canServe = computed(() => !!food.value?.servingG)
 const grams = computed(() => {
@@ -78,14 +94,22 @@ async function save() {
     servingG: f.servingG,
     servingLabel: f.servingLabel,
     perServing: f.perServing || undefined,
-    per100: { ...f.per100 }
+    per100: { ...f.per100 },
+    price: priced.value ? Math.round(price.value! * 100) / 100 : undefined,
+    moneyUid: props.meal?.moneyUid
   }
+  const send = priced.value && toMoney.value && canSend.value
+  if (send) {
+    record.moneyUid ??= newMoneyUid()
+    account.sendToMoney(record.moneyUid, mealExpense({ price: record.price!, slot: record.slot, name: record.name, date: record.date }))
+  }
+  const sent = send ? ` · sent to Money Tracker as ${moneyCategory.value}` : ''
   if (props.meal?.id != null) {
     await diet.update(props.meal.id, record)
-    emit('saved', `Updated ${f.name}`)
+    emit('saved', `Updated ${f.name}${sent}`)
   } else {
     await diet.add(record)
-    emit('saved', `Added ${f.name}`)
+    emit('saved', `Added ${f.name}${sent}`)
   }
   emit('close')
 }
@@ -275,6 +299,28 @@ const inputCls =
           <div class="col-span-4 flex gap-4 pt-1 text-xs text-neutral-400">
             <span v-for="n in NUTRIENTS.slice(4)" :key="n.key">{{ n.label }} <span class="text-neutral-200">{{ fmtN(totals[n.key], n.key) }} {{ n.unit }}</span></span>
           </div>
+        </div>
+
+        <!-- Price, and sending it to Money Tracker -->
+        <div class="flex flex-col gap-1">
+          <label class="flex min-h-12 items-center justify-between gap-3">
+            <span class="text-[15px]">Price <span class="text-neutral-500">(optional)</span></span>
+            <span class="flex items-center gap-2">
+              <span v-if="account.moneyCurrency.value" class="text-[15px] text-neutral-400">{{ account.moneyCurrency.value }}</span>
+              <input v-model.number="price" type="number" step="any" min="0" inputmode="decimal" placeholder="—" aria-label="Price" :class="[inputCls, '!w-28 text-right']" />
+            </span>
+          </label>
+          <label v-if="priced && canSend" class="flex min-h-12 cursor-pointer items-center justify-between gap-3">
+            <span class="text-[15px]">{{ meal?.moneyUid ? 'Update' : 'Add' }} in Money Tracker · <span class="text-neutral-400">{{ moneyCategory }}</span></span>
+            <input v-model="toMoney" type="checkbox" class="peer sr-only" />
+            <span
+              class="relative h-8 w-[52px] flex-none rounded-2xl transition-colors peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent"
+              :class="toMoney ? 'bg-accent-700' : 'bg-neutral-800'"
+            >
+              <span class="absolute left-[3px] top-[3px] size-[26px] rounded-[13px] transition-transform" :class="toMoney ? 'translate-x-5 bg-accent-200' : 'bg-neutral-400'" />
+            </span>
+          </label>
+          <p v-else-if="priced" class="text-xs text-neutral-500">Sign in on the Data tab, with the same account as Money Tracker, to add it there too.</p>
         </div>
 
         <div class="flex gap-2">

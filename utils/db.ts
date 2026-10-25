@@ -37,6 +37,10 @@ export interface Meal {
   servingLabel?: string
   perServing?: boolean // values are for one serving of unknown weight
   per100: Nutrients
+  /** What it cost, when entered. */
+  price?: number
+  /** The expense it was sent to Money Tracker as, so editing the price updates that one. */
+  moneyUid?: string
   uid?: string
 }
 
