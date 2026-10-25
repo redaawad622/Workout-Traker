@@ -1,7 +1,11 @@
 // Exercises you do one OR the other, never both on the same day.
 // Logging any member hides the rest of its group for that day.
-// To add a pair, add another array here.
-export const ALTERNATIVE_GROUPS: string[][] = [['Leg Curl', 'Seated Leg Curl']]
+// To add a pair, add another array here. The first name is the usual one.
+export const ALTERNATIVE_GROUPS: string[][] = [
+  ['Leg Curl', 'Seated Leg Curl'],
+  ['Leg Press', 'Smith Machine Squat', 'Goblet Squat — Dumbbells'],
+  ['Hip Thrust Machine', 'Smith Machine Hip Thrust', 'Hip Abductor Machine']
+]
 
 export const alternativesOf = (name: string): string[] =>
   ALTERNATIVE_GROUPS.find((g) => g.includes(name))?.filter((n) => n !== name) ?? []
@@ -39,13 +43,45 @@ export const DEFAULT_SPLIT: Record<SplitDay, string[]> = {
   ],
   legs: [
     'Leg Press',
+    'Smith Machine Squat',
+    'Goblet Squat — Dumbbells',
     'Romanian Deadlift — Dumbbells',
     'Leg Extension',
     'Leg Curl',
     'Seated Leg Curl',
     'Hip Thrust Machine',
+    'Smith Machine Hip Thrust',
+    'Hip Abductor Machine',
+    'Hip Adductor Machine',
     'Calf Raise'
   ]
+}
+
+// A list with every alternative of an exercise in it, right after its sibling, so a day planned
+// before an alternative existed still offers it.
+export function withAlternatives(list: string[]): string[] {
+  const out = [...list]
+  for (const group of ALTERNATIVE_GROUPS) {
+    const present = group.filter((n) => out.includes(n))
+    if (!present.length) continue
+    let at = Math.max(...present.map((n) => out.indexOf(n)))
+    for (const n of group) {
+      if (!out.includes(n)) out.splice(++at, 0, n)
+    }
+  }
+  return out
+}
+
+// A saved push/pull/legs list plus any default exercise it is missing (added in a later
+// version), each placed after the default that comes before it. Nothing is removed.
+export function withDefaults(saved: string[], defaults: string[]): string[] {
+  const out = [...saved]
+  defaults.forEach((n, i) => {
+    if (out.includes(n)) return
+    const before = defaults.slice(0, i).reverse().find((d) => out.includes(d))
+    out.splice(before ? out.indexOf(before) + 1 : 0, 0, n)
+  })
+  return out
 }
 
 // Group a list of exercises into training slots: alternatives (either/or) share one slot.

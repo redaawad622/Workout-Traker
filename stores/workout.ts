@@ -4,7 +4,6 @@ import { SEED_ENTRIES } from '~/utils/seed'
 import { toKg, type Unit } from '~/utils/units'
 import type { AiExercise } from '~/utils/ai'
 import {
-  ALTERNATIVE_GROUPS,
   DAY_LABELS,
   DEFAULT_SPLIT,
   FULL_BODY,
@@ -17,7 +16,9 @@ import {
   type DayType,
   type Program,
   type ProgramDay,
-  type SplitDay
+  type SplitDay,
+  withAlternatives,
+  withDefaults
 } from '~/utils/exercises'
 
 const SOURCES = ['assessment', 'logged', 'unverified']
@@ -114,15 +115,14 @@ export const useWorkoutStore = defineStore('workout', {
         new Set([...s.entries].sort((a, b) => (a.id ?? 0) - (b.id ?? 0)).map((e) => e.exercise))
       )
       // Make sure every alternative shows up, right after its sibling.
-      for (const group of ALTERNATIVE_GROUPS) {
-        const present = group.filter((n) => list.includes(n))
-        if (!present.length) continue
-        let at = Math.max(...present.map((n) => list.indexOf(n)))
-        for (const n of group) {
-          if (!list.includes(n)) list.splice(++at, 0, n)
-        }
-      }
-      return list
+      return withAlternatives(list)
+    },
+
+    // Latest date each exercise was logged (YYYY-MM-DD).
+    lastDone: (s) => {
+      const out: Record<string, string> = {}
+      for (const e of s.entries) if (!out[e.exercise] || e.date > out[e.exercise]) out[e.exercise] = e.date
+      return out
     },
 
     // Training slots in order: alternatives (either/or) share one slot.
@@ -166,7 +166,15 @@ export const useWorkoutStore = defineStore('workout', {
 
     // Exercises planned for a kind of day: full body = everything, in training order.
     planFor() {
-      return (type: DayType) => this.dayOf(type)?.exercises ?? this.exercises
+      // Every alternative is offered, and within an either/or slot the one done most recently
+      // comes first, so the day starts on the one you actually use.
+      return (type: DayType) => {
+        const list = withAlternatives(this.dayOf(type)?.exercises ?? this.exercises)
+        const rank = (n: string) => this.lastDone[n] ?? ''
+        return slotsOf(list).flatMap((slot) =>
+          [...slot].sort((a, b) => (rank(a) === rank(b) ? 0 : rank(a) > rank(b) ? -1 : 1))
+        )
+      }
     },
 
     // Day of a program that follows the most recent logged day of that program before `date`.
@@ -295,7 +303,9 @@ export const useWorkoutStore = defineStore('workout', {
     applyRoutine(routine: Routine | undefined) {
       if (routine?.program) this.program = routine.program
       else if (routine?.mode) this.program = routine.mode === 'split' ? PPL : FULL_BODY
-      if (routine?.split) Object.assign(this.split, routine.split)
+      if (routine?.split) {
+        for (const d of SPLIT_DAYS) if (routine.split[d]) this.split[d] = withDefaults(routine.split[d], DEFAULT_SPLIT[d])
+      }
     },
 
     routineValue(): Routine {

@@ -240,6 +240,9 @@ const pickerRows = computed(() =>
 // Set when the exercise came from "Ask AI"; saved with its first log.
 const aiInfo = ref<AiExercise | null>(null)
 
+// Either/or siblings of the current exercise still open today, for a one-tap swap.
+const swaps = computed(() => (editing.value || form.custom ? [] : alternativesOf(name.value).filter((n) => remaining.value.includes(n))))
+
 const muscles = computed(() => (store.exerciseInfo[name.value] ?? (aiInfo.value?.name === name.value ? aiInfo.value : null))?.muscles.join(' · '))
 
 function pick(n: string, info?: AiExercise) {
@@ -410,6 +413,18 @@ const segment = (s: string) =>
               <span class="text-xs font-medium uppercase tracking-[0.06em] text-accent-400">{{ kicker }}</span>
               <span class="text-[26px] font-medium leading-[1.15] tracking-[-0.01em]">{{ name }}</span>
               <span v-if="muscles" class="text-[13px] text-neutral-400">{{ muscles }}</span>
+              <div v-if="swaps.length" class="flex flex-wrap items-center gap-1.5 pt-1.5">
+                <span class="text-[13px] text-neutral-400">or</span>
+                <button
+                  v-for="n in swaps"
+                  :key="n"
+                  type="button"
+                  class="chip text-neutral-200 shadow-[inset_0_0_0_1px_theme(colors.neutral.700)] active:bg-neutral-900"
+                  @click="pick(n)"
+                >
+                  <i class="ph ph-swap" />{{ short(n) }}
+                </button>
+              </div>
             </div>
             <button
               v-if="editing"
