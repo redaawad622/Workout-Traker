@@ -82,7 +82,7 @@ const syncedAgo = computed(() => {
       <NuxtLink to="/reports" aria-label="Reports" class="-ml-2.5 flex size-11 items-center justify-center text-[22px] text-neutral-300">
         <i class="ph ph-caret-left" />
       </NuxtLink>
-      <h1 class="text-[28px] font-medium tracking-[-0.01em]">Data</h1>
+      <h1 class="text-[28px] font-medium tracking-[-0.01em]">{{ showAccount ? 'Account & data' : 'Data' }}</h1>
     </div>
 
     <div v-if="account.user.value" class="flex items-start gap-3">

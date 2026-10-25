@@ -8,7 +8,10 @@ const dayHeading = (d: string) => (d === todayISO() ? `Today · ${fmtDay(d)}` : 
 <template>
   <div class="flex flex-col gap-[22px]">
     <div class="flex flex-col gap-2.5">
-      <h1 class="text-[28px] font-medium tracking-[-0.01em]">History</h1>
+      <div class="flex items-center justify-between gap-3">
+        <h1 class="text-[28px] font-medium tracking-[-0.01em]">History</h1>
+        <AccountButton />
+      </div>
       <div v-if="store.sessions.length" class="flex gap-3.5 text-xs text-neutral-400">
         <span class="flex items-center gap-1.5"><span class="size-2 rounded bg-accent" />Logged</span>
         <span class="flex items-center gap-1.5"><span class="size-2 rounded shadow-[inset_0_0_0_1.5px_theme(colors.neutral.400)]" />Baseline</span>
