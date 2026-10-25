@@ -149,7 +149,12 @@ async function start() {
     if (offline.value) loadProviders()
     schedule(500)
   })
-  Dexie.on('storagemutated', () => schedule())
+  // Writes made by a sync itself, and to its bookkeeping table, are not changes to upload.
+  Dexie.on('storagemutated', (parts) => {
+    if (running) return
+    if (Object.keys(parts).every((k) => k.split('/')[3] === 'synced')) return
+    schedule()
+  })
 }
 
 async function signIn(provider: Provider) {
