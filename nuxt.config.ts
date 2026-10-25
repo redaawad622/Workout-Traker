@@ -13,6 +13,15 @@ export default defineNuxtConfig({
     '~/assets/css/main.css'
   ],
   tailwindcss: { cssPath: false },
+  // Optional accounts (Supabase). The publishable key is meant to ship in the app; row-level
+  // security keeps each person to their own rows. Override with NUXT_PUBLIC_SUPABASE_URL /
+  // NUXT_PUBLIC_SUPABASE_KEY at build time, or set the URL to '' to turn accounts off.
+  runtimeConfig: {
+    public: {
+      supabaseUrl: 'https://lgbtzvvgaemlpnuktssx.supabase.co',
+      supabaseKey: 'sb_publishable_yatAKSTGeF_d9I0CoTyB_g_iAgC8FMf'
+    }
+  },
   app: {
     head: {
       title: 'Workout Tracker',

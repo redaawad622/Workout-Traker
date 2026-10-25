@@ -286,14 +286,14 @@ export const useWorkoutStore = defineStore('workout', {
       this.applyRoutine((await db.meta.get('routine'))?.value as Routine | undefined)
       this.customPrograms = ((await db.meta.get('programs'))?.value as Program[]) ?? []
       this.machineMax = ((await db.meta.get('machineMax'))?.value as MachineMax) ?? {}
-      for (const m of await db.meta.where('key').startsWith('day:').toArray()) {
-        this.dayTypes[m.key.slice(4)] = m.value as DayType
-      }
-      for (const m of await db.meta.where('key').startsWith('skip:').toArray()) {
-        this.skips[m.key.slice(5)] = m.value as string[]
-      }
-      const info = (await db.meta.get('exerciseInfo'))?.value as Record<string, AiExercise> | undefined
-      if (info) this.exerciseInfo = info
+      // Built fresh so a reload after an account sync also drops dates removed elsewhere.
+      const dayTypes: Record<string, DayType> = {}
+      for (const m of await db.meta.where('key').startsWith('day:').toArray()) dayTypes[m.key.slice(4)] = m.value as DayType
+      this.dayTypes = dayTypes
+      const skips: Record<string, string[]> = {}
+      for (const m of await db.meta.where('key').startsWith('skip:').toArray()) skips[m.key.slice(5)] = m.value as string[]
+      this.skips = skips
+      this.exerciseInfo = ((await db.meta.get('exerciseInfo'))?.value as Record<string, AiExercise>) ?? {}
       this.ready = true
     },
 
@@ -423,7 +423,10 @@ export const useWorkoutStore = defineStore('workout', {
       const data = parseBackup(json)
       const db = useDb()
       const strip = <T extends { id?: number }>(list: T[]) => list.map(({ id, ...rest }) => rest as T)
-      await db.transaction('rw', db.entries, db.meals, db.foods, db.meta, async () => {
+      await db.transaction('rw', [db.entries, db.meals, db.foods, db.meta, db.synced], async () => {
+        // Forget what was last synced, so the next account sync merges this backup with the
+        // cloud copy instead of treating everything missing from it as deleted.
+        await db.synced.clear()
         await db.entries.clear()
         await db.entries.bulkAdd(strip(data.entries))
         if (data.meals) {
