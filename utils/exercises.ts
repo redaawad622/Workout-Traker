@@ -4,7 +4,8 @@
 export const ALTERNATIVE_GROUPS: string[][] = [
   ['Leg Curl', 'Seated Leg Curl'],
   ['Leg Press', 'Smith Machine Squat', 'Goblet Squat — Dumbbells'],
-  ['Hip Thrust Machine', 'Smith Machine Hip Thrust', 'Hip Abductor Machine']
+  ['Hip Thrust Machine', 'Smith Machine Hip Thrust', 'Hip Abductor Machine'],
+  ['Romanian Deadlift — Dumbbells', 'Romanian Deadlift — Barbell']
 ]
 
 export const alternativesOf = (name: string): string[] =>
@@ -46,6 +47,7 @@ export const DEFAULT_SPLIT: Record<SplitDay, string[]> = {
     'Smith Machine Squat',
     'Goblet Squat — Dumbbells',
     'Romanian Deadlift — Dumbbells',
+    'Romanian Deadlift — Barbell',
     'Leg Extension',
     'Leg Curl',
     'Seated Leg Curl',

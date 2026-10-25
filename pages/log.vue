@@ -242,6 +242,11 @@ const aiInfo = ref<AiExercise | null>(null)
 
 // Either/or siblings of the current exercise still open today, for a one-tap swap.
 const swaps = computed(() => (editing.value || form.custom ? [] : alternativesOf(name.value).filter((n) => remaining.value.includes(n))))
+// Same exercise with other equipment (Romanian Deadlift dumbbells / barbell) is labelled by the equipment.
+function swapLabel(n: string) {
+  const [main, kind] = splitName(n)
+  return main === splitName(name.value)[0] && kind ? kind[0].toUpperCase() + kind.slice(1) : short(n)
+}
 
 const muscles = computed(() => (store.exerciseInfo[name.value] ?? (aiInfo.value?.name === name.value ? aiInfo.value : null))?.muscles.join(' · '))
 
@@ -422,7 +427,7 @@ const segment = (s: string) =>
                   class="chip text-neutral-200 shadow-[inset_0_0_0_1px_theme(colors.neutral.700)] active:bg-neutral-900"
                   @click="pick(n)"
                 >
-                  <i class="ph ph-swap" />{{ short(n) }}
+                  <i class="ph ph-swap" />{{ swapLabel(n) }}
                 </button>
               </div>
             </div>

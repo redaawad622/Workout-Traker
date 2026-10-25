@@ -63,7 +63,7 @@ const EQUIPMENT: Record<AiExercise['equipment'], string> = {
                   :class="name === selected ? 'bg-accent-900 shadow-[inset_0_0_0_1px_theme(colors.accent.700)]' : 'shadow-sm active:bg-neutral-900'"
                   @click="emit('select', name)"
                 >
-                  <span class="text-[15px]">{{ splitName(name)[0] }}</span>
+                  <span class="text-[15px]">{{ splitName(name)[0] }}<span v-if="splitName(name)[1]" class="text-[13px] text-neutral-400"> {{ splitName(name)[1] }}</span></span>
                   <span v-if="lastOf(name)" class="tnum text-xs text-neutral-400">{{ weightText(lastOf(name)!) }}</span>
                 </button>
               </div>
