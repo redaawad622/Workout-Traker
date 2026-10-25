@@ -44,18 +44,22 @@ function choose(f: Food) {
   food.value = f
   mode.value = f.servingG ? 'serving' : 'g'
   qty.value = f.servingG ? 1 : 100
-  price.value = lastPrice(f.name)
+  price.value = undefined
   step.value = 'amount'
 }
 
 // ---- Price ----
-// Starts at what this food cost last time. With an account, it can go straight to Money Tracker
-// as an expense in the meal's category.
+// What this food cost last time is only a hint, so nothing goes to Money Tracker unless a price is
+// typed for this meal. With an account, it can go there as an expense in the meal's category.
 const price = ref<number | undefined>(props.meal?.price)
 function lastPrice(name: string) {
   const prev = diet.meals.filter((m) => m.name === name && m.price).sort((a, b) => b.date.localeCompare(a.date) || (b.id ?? 0) - (a.id ?? 0))[0]
   return prev?.price
 }
+const pricePlaceholder = computed(() => {
+  const last = food.value && !props.meal ? lastPrice(food.value.name) : undefined
+  return last ? `last ${last}` : '—'
+})
 const priced = computed(() => typeof price.value === 'number' && price.value > 0)
 const toMoney = ref(props.meal ? !!props.meal.moneyUid : true)
 const canSend = computed(() => !!account.user.value)
@@ -307,7 +311,7 @@ const inputCls =
             <span class="text-[15px]">Price <span class="text-neutral-500">(optional)</span></span>
             <span class="flex items-center gap-2">
               <span v-if="account.moneyCurrency.value" class="text-[15px] text-neutral-400">{{ account.moneyCurrency.value }}</span>
-              <input v-model.number="price" type="number" step="any" min="0" inputmode="decimal" placeholder="—" aria-label="Price" :class="[inputCls, '!w-28 text-right']" />
+              <input v-model.number="price" type="number" step="any" min="0" inputmode="decimal" :placeholder="pricePlaceholder" aria-label="Price" :class="[inputCls, '!w-28 text-right']" />
             </span>
           </label>
           <label v-if="priced && canSend" class="flex min-h-12 cursor-pointer items-center justify-between gap-3">
