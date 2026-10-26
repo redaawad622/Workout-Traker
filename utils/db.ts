@@ -15,6 +15,7 @@ export interface Entry {
   perDumbbell?: boolean
   bodyWeightKg?: number
   note?: string
+  at?: string // ISO time it was logged, set when logged on the day itself (not indexed, so no schema version)
   source: EntrySource
   uid?: string // stable id across devices, set on first cloud sync
 }
