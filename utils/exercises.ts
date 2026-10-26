@@ -7,7 +7,11 @@ export const ALTERNATIVE_GROUPS: string[][] = [
   ['Hip Thrust Machine', 'Smith Machine Hip Thrust', 'Hip Abductor Machine'],
   ['Romanian Deadlift — Dumbbells', 'Romanian Deadlift — Barbell'],
   ['Cable Biceps Curl', 'Biceps Curl — Dumbbells'],
-  ['Hammer Curl — Dumbbells', 'Hammer Curl — Cable Rope']
+  ['Hammer Curl — Dumbbells', 'Hammer Curl — Cable Rope'],
+  ['Ab Crunch Machine', 'Cable Crunch'],
+  ['Torso Rotation Machine', 'Cable Woodchop'],
+  ['Wrist Curl — Dumbbells', 'Wrist Curl — Cable'],
+  ['Reverse Wrist Curl — Dumbbells', 'Reverse Wrist Curl — Cable']
 ]
 
 export const alternativesOf = (name: string): string[] =>
@@ -127,5 +131,54 @@ export const programOfDay = (type: DayType): string =>
   type === 'full' ? FULL_BODY : (SPLIT_DAYS as string[]).includes(type) ? PPL : type.split('/')[0]
 
 export const dayKey = (programId: string, dayId: string): DayType => (isBuiltIn(programId) ? dayId : `${programId}/${dayId}`)
+
+// Ready-made programs added to your programs once (meta key "starter:<id>"), so they can be
+// edited or deleted like one you made. Deleting one doesn't bring it back.
+export const STARTER_PROGRAMS: Program[] = [
+  {
+    id: 'arms-core',
+    name: 'Arms & Core',
+    days: [
+      {
+        id: 'arms',
+        name: 'Arms & Forearms',
+        exercises: [
+          'Cable Biceps Curl',
+          'Biceps Curl — Dumbbells',
+          'Preacher Curl Machine',
+          'Hammer Curl — Dumbbells',
+          'Hammer Curl — Cable Rope',
+          'Triceps Rope Pushdown',
+          'Overhead Triceps Extension — Cable',
+          'Triceps Dip Machine',
+          'Reverse Curl — Cable',
+          'Wrist Curl — Dumbbells',
+          'Wrist Curl — Cable',
+          'Reverse Wrist Curl — Dumbbells',
+          'Reverse Wrist Curl — Cable',
+          "Farmer's Hold — Dumbbells"
+        ]
+      },
+      {
+        id: 'core',
+        name: 'Core & Forearms',
+        exercises: [
+          'Ab Crunch Machine',
+          'Cable Crunch',
+          'Torso Rotation Machine',
+          'Cable Woodchop',
+          'Pallof Press — Cable',
+          'Side Bend — Dumbbell',
+          'Back Extension',
+          'Wrist Curl — Cable',
+          'Wrist Curl — Dumbbells',
+          'Reverse Wrist Curl — Cable',
+          'Reverse Wrist Curl — Dumbbells',
+          "Farmer's Hold — Dumbbells"
+        ]
+      }
+    ]
+  }
+]
 
 export const newId = () => Math.random().toString(36).slice(2, 10)

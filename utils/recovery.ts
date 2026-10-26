@@ -88,7 +88,22 @@ const EXERCISE_MUSCLES: Record<string, Muscle[]> = {
   'Smith Machine Hip Thrust': ['glutes', 'hamstrings'],
   'Hip Abductor Machine': ['glutes'],
   'Hip Adductor Machine': [],
-  'Calf Raise': ['calves']
+  'Calf Raise': ['calves'],
+  'Preacher Curl Machine': ['biceps'],
+  'Triceps Dip Machine': ['triceps', 'chest'],
+  'Reverse Curl — Cable': ['forearms', 'biceps'],
+  'Wrist Curl — Dumbbells': ['forearms'],
+  'Wrist Curl — Cable': ['forearms'],
+  'Reverse Wrist Curl — Dumbbells': ['forearms'],
+  'Reverse Wrist Curl — Cable': ['forearms'],
+  "Farmer's Hold — Dumbbells": ['forearms', 'traps'],
+  'Ab Crunch Machine': ['abs'],
+  'Cable Crunch': ['abs'],
+  'Torso Rotation Machine': ['abs'],
+  'Cable Woodchop': ['abs'],
+  'Pallof Press — Cable': ['abs'],
+  'Side Bend — Dumbbell': ['abs'],
+  'Back Extension': ['lowerBack', 'glutes']
 }
 
 // For exercises not in the list above: words in the name (or in the muscles an AI app gave).
