@@ -5,6 +5,7 @@ import type { AiExercise } from '~/utils/ai'
 import { alternativesOf, dayKey, isBuiltIn, programOfDay, slotsOf, type DayType } from '~/utils/exercises'
 import { convertedFull, daysBetween, fixed1, fmtDay, kgOf, relativeDay, splitName, todayISO } from '~/utils/format'
 import { MAX_SESSIONS_TO_SWITCH } from '~/stores/workout'
+import { MUSCLE_LABELS, RECOVERY_HOURS, musclesOfList, recoveryOf } from '~/utils/recovery'
 
 const store = useWorkoutStore()
 
@@ -237,6 +238,8 @@ async function save() {
     reps: form.reps,
     perDumbbell: form.perDumbbell || undefined,
     bodyWeightKg: form.bodyWeightKg,
+    // Time of day, for muscle recovery. Only known when logging on the day itself.
+    at: form.date === todayISO() ? new Date().toISOString() : undefined,
     source: 'logged'
   })
   flash(`Saved ${name.value}`)
@@ -304,6 +307,22 @@ const dayStats = computed(() => {
     lighter
   }
 })
+
+// Muscle recovery for today's day: how recovered each muscle it trains is, from the last
+// session before today that worked it.
+const now = ref(Date.now())
+let nowTimer: ReturnType<typeof setInterval> | undefined
+onMounted(() => (nowTimer = setInterval(() => (now.value = Date.now()), 60000)))
+onUnmounted(() => clearInterval(nowTimer))
+const infoOf = (n: string) => store.exerciseInfo[n]
+const recovery = computed(() => {
+  if (form.date !== todayISO()) return []
+  const before = store.verified.filter((e) => e.date < form.date)
+  return recoveryOf(musclesOfList(plan.value, infoOf), before, now.value, infoOf)
+})
+const notRecovered = computed(() => recovery.value.filter((r) => r.pct < 100))
+const recoveryOpen = ref(false)
+const hoursText = (h: number) => (h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : `${h}h`)
 
 const segment = (s: string) =>
   s === 'done'
@@ -385,6 +404,42 @@ const segment = (s: string) =>
             {{ d.name }}
           </button>
         </div>
+      </div>
+
+      <!-- Muscle recovery for this day -->
+      <div v-if="recovery.length && !allDone" class="card flex flex-col gap-2.5 p-3.5">
+        <button type="button" class="flex min-h-8 items-center justify-between gap-3 text-left" @click="recoveryOpen = !recoveryOpen">
+          <span class="flex items-center gap-2 text-sm">
+            <i class="ph ph-heartbeat text-lg" :class="notRecovered.length ? 'text-warn' : 'text-accent-400'" />
+            <template v-if="notRecovered.length">
+              <span>
+                <span class="font-medium text-warn-text">{{ notRecovered.length }} not fully recovered</span>
+                <span class="text-neutral-400"> · {{ notRecovered.map((r) => `${MUSCLE_LABELS[r.muscle]} ${r.pct}%`).join(', ') }}</span>
+              </span>
+            </template>
+            <span v-else><span class="font-medium text-accent-300">All recovered</span><span class="text-neutral-400"> · {{ recovery.length }} muscles</span></span>
+          </span>
+          <i class="ph text-neutral-500" :class="recoveryOpen ? 'ph-caret-up' : 'ph-caret-down'" />
+        </button>
+        <ul v-if="recoveryOpen" class="flex flex-col gap-2.5 pt-1">
+          <li v-for="r in recovery" :key="r.muscle" class="flex flex-col gap-1">
+            <span class="flex items-baseline justify-between gap-3 text-[13px]">
+              <span>{{ MUSCLE_LABELS[r.muscle] }}</span>
+              <span class="tnum font-medium" :class="r.pct < 100 ? 'text-warn-text' : 'text-accent-300'">{{ r.pct }}%</span>
+            </span>
+            <span class="h-1.5 overflow-hidden rounded-[3px] bg-neutral-900">
+              <span class="block h-full rounded-[3px]" :class="r.pct < 100 ? 'bg-warn' : 'bg-accent'" :style="{ width: `${r.pct}%` }" />
+            </span>
+            <span class="tnum text-xs text-neutral-400">
+              <template v-if="r.last">{{ relativeDay(r.last.date) }} · {{ short(r.last.exercise) }}</template>
+              <template v-else>Not trained yet</template>
+              <template v-if="r.hoursLeft"> · ready in {{ hoursText(r.hoursLeft) }}</template>
+            </span>
+          </li>
+          <li class="text-xs leading-[1.4] text-neutral-500">
+            Recovery: {{ recovery.map((r) => `${MUSCLE_LABELS[r.muscle]} ${RECOVERY_HOURS[r.muscle]}h`).join(' · ') }}
+          </li>
+        </ul>
       </div>
 
       <!-- Day progress -->
