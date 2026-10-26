@@ -9,6 +9,7 @@ import {
   FULL_BODY,
   PPL,
   SPLIT_DAYS,
+  STARTER_PROGRAMS,
   dayKey,
   isBuiltIn,
   programOfDay,
@@ -285,6 +286,7 @@ export const useWorkoutStore = defineStore('workout', {
       this.entries = await db.entries.toArray()
       this.applyRoutine((await db.meta.get('routine'))?.value as Routine | undefined)
       this.customPrograms = ((await db.meta.get('programs'))?.value as Program[]) ?? []
+      await this.addStarterPrograms()
       this.machineMax = ((await db.meta.get('machineMax'))?.value as MachineMax) ?? {}
       // Built fresh so a reload after an account sync also drops dates removed elsewhere.
       const dayTypes: Record<string, DayType> = {}
@@ -295,6 +297,20 @@ export const useWorkoutStore = defineStore('workout', {
       this.skips = skips
       this.exerciseInfo = ((await db.meta.get('exerciseInfo'))?.value as Record<string, AiExercise>) ?? {}
       this.ready = true
+    },
+
+    // Each ready-made program is added once; after that it's yours to edit or delete.
+    async addStarterPrograms() {
+      const db = useDb()
+      for (const p of STARTER_PROGRAMS) {
+        const key = `starter:${p.id}`
+        if (await db.meta.get(key)) continue
+        if (!this.customPrograms.some((x) => x.id === p.id)) {
+          this.customPrograms.push(structuredClone(p))
+          await this.savePrograms()
+        }
+        await db.meta.put({ key, value: true })
+      }
     },
 
     async saveExerciseInfo(name: string, info: AiExercise) {
