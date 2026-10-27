@@ -47,3 +47,18 @@ Signing out or importing a backup never deletes anything; the next sign-in merge
 
 The iPhone app opens sign-in in Safari's sheet and gets the result back on
 `com.redaawad.workoutlog://auth-callback`.
+
+## Subscriptions (off by default)
+Paid plans are hidden until turned on remotely. In Supabase, open Table Editor → `app_config` →
+row `workout_subscription` and set `"enabled": true`. Each person then sees a banner counting down
+`grace_days` (7) from the first time their app sees it, plus the plans once; after that a subscribe
+screen covers the app. Account & data stays reachable so anyone can export their log; nothing is
+ever deleted. Setting `enabled` back to false hides everything again (and restarts the countdown
+next time). `native: true` also shows it in the iPhone app, which is off by default because Apple
+expects in-app purchase for digital subscriptions in App Store apps.
+
+Prices (`monthly_price` 1, `yearly_price` 10, `currency`) and checkout links (`monthly_url`,
+`yearly_url`: Stripe Payment Links) live in the same row. Subscribing needs an account so it follows
+you between devices: the link gets `?client_reference_id=<user id>`, and
+`supabase/functions/stripe-webhook` writes the result to `workout_subscriptions`. To let someone
+use it free, add a row there with plan `lifetime`.

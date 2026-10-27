@@ -256,6 +256,7 @@ export function useAccount() {
     start,
     signIn,
     signOut,
-    syncNow: runSync
+    syncNow: runSync,
+    getClient
   }
 }

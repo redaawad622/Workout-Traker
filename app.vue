@@ -8,6 +8,7 @@ onMounted(async () => {
   await store.load()
   await diet.load(store.latestBodyWeight)
   useAccount().start()
+  useSubscription().start()
 })
 const links = [
   { to: '/', label: 'History', icon: 'clock-counter-clockwise' },
@@ -25,6 +26,7 @@ const isActive = (l: { to: string; also?: string }) =>
 <template>
   <div class="min-h-screen bg-bg text-ink" style="padding-bottom: calc(var(--tabbar) + 32px)">
     <main class="mx-auto max-w-2xl overflow-x-clip px-5" style="padding-top: calc(env(safe-area-inset-top) + 12px)">
+      <Paywall v-if="store.ready" />
       <NuxtPage v-if="store.ready" />
       <p v-else class="pt-4 text-neutral-400">Loading…</p>
     </main>
