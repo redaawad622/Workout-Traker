@@ -241,6 +241,15 @@ async function signOut() {
   await useDb().synced.clear()
 }
 
+// Deletes the account and everything synced to it (App Store rule). This phone keeps its log,
+// like signing out does.
+async function deleteAccount() {
+  const c = await getClient()
+  const { error: e } = await c.rpc('delete_my_account')
+  if (e) throw e
+  await signOut()
+}
+
 export function useAccount() {
   return {
     enabled: !!config().url,
@@ -256,6 +265,7 @@ export function useAccount() {
     start,
     signIn,
     signOut,
+    deleteAccount,
     syncNow: runSync
   }
 }
