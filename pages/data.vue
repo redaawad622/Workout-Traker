@@ -68,6 +68,22 @@ const account = useAccount()
 const providerLabel = { google: 'Google', apple: 'Apple' } as const
 // Shown once at least one sign-in option is turned on in Supabase (or while offline).
 const showAccount = computed(() => account.enabled && (!!account.user.value || !!account.providers.value?.length || account.offline.value))
+const confirmDelete = ref(false)
+const deleting = ref(false)
+const deleteError = ref('')
+async function deleteAccount() {
+  deleting.value = true
+  deleteError.value = ''
+  try {
+    await account.deleteAccount()
+    confirmDelete.value = false
+    status.value = { ok: true, text: 'Account deleted · your log is still on this phone' }
+  } catch {
+    deleteError.value = "Couldn't delete the account. Check your connection and try again."
+  } finally {
+    deleting.value = false
+  }
+}
 const syncedAgo = computed(() => {
   const t = account.lastSync.value
   if (!t) return 'Not synced yet'
@@ -127,6 +143,7 @@ const syncedAgo = computed(() => {
           </button>
         </div>
         <span class="text-xs leading-normal text-neutral-500">Signing out keeps everything on this phone.</span>
+        <button class="self-start text-sm text-warn-text underline-offset-2 active:underline" @click="confirmDelete = true">Delete account</button>
       </div>
       <template v-else>
         <button
@@ -191,6 +208,40 @@ const syncedAgo = computed(() => {
         <input type="file" accept="application/json,.json" class="sr-only" @change="onPick" />
       </label>
     </section>
+
+    <p class="flex gap-4 text-sm text-neutral-400">
+      <NuxtLink to="/privacy" class="underline underline-offset-2">Privacy policy</NuxtLink>
+      <NuxtLink to="/support" class="underline underline-offset-2">Support</NuxtLink>
+    </p>
+
+    <!-- Confirm before deleting the account -->
+    <Teleport to="body">
+      <template v-if="confirmDelete">
+        <div class="fixed inset-0 z-40 bg-[color-mix(in_srgb,theme(colors.bg)_75%,transparent)]" @click="confirmDelete = false" />
+        <div
+          role="alertdialog"
+          aria-labelledby="delete-title"
+          class="fixed inset-x-4 z-50 mx-auto flex max-w-xl flex-col gap-3 rounded-xl bg-surface px-5 pb-5 pt-[22px] shadow-lg"
+          style="bottom: calc(env(safe-area-inset-bottom) + 24px)"
+        >
+          <h2 id="delete-title" class="text-xl font-medium">Delete your account?</h2>
+          <p class="text-[15px] leading-normal text-neutral-300">
+            This deletes {{ account.user.value?.email ?? 'your account' }} and everything synced to it, including Money Tracker and Azkar Tracker data on the same account. Your log stays on this phone. This can't be undone.
+          </p>
+          <p v-if="deleteError" role="alert" class="text-sm text-warn-text">{{ deleteError }}</p>
+          <div class="mt-2 flex flex-col gap-2">
+            <button
+              class="h-[52px] rounded-md text-base font-medium text-warn-text shadow-[inset_0_0_0_1px_theme(colors.warn.line)] active:bg-warn-tint disabled:opacity-60"
+              :disabled="deleting"
+              @click="deleteAccount"
+            >
+              {{ deleting ? 'Deleting…' : 'Delete account' }}
+            </button>
+            <button class="h-[52px] rounded-md bg-neutral-900 text-base active:bg-neutral-800" @click="confirmDelete = false">Cancel</button>
+          </div>
+        </div>
+      </template>
+    </Teleport>
 
     <!-- Confirm before replacing everything -->
     <Teleport to="body">
