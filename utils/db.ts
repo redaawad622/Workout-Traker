@@ -15,6 +15,8 @@ export interface Entry {
   perDumbbell?: boolean
   bodyWeightKg?: number
   note?: string
+  // Every rep done with good form, so next time goes up a step (not indexed, so no schema version).
+  clean?: boolean
   at?: string // ISO time it was logged, set when logged on the day itself (not indexed, so no schema version)
   source: EntrySource
   uid?: string // stable id across devices, set on first cloud sync
