@@ -18,7 +18,8 @@ const form = reactive({
   unit: 'lbs' as Unit,
   sets: 3,
   reps: 10,
-  perDumbbell: false
+  perDumbbell: false,
+  clean: false
 })
 
 // Kind of day for the selected date: what was picked for it, else the next day in the
@@ -119,10 +120,22 @@ const lastWhen = computed(() => {
   return days > 0 ? `${fmtDay(last.value.date)} · ${days} day${days === 1 ? '' : 's'} ago` : fmtDay(last.value.date)
 })
 
+// Next weight from last time: one step up if every rep was clean, the same if not.
+// Never past the machine max.
+const stepOf = (unit: Unit, perDumbbell?: boolean) => (unit === 'lbs' ? 5 : perDumbbell ? 1 : 2.5)
+const next = computed(() => {
+  const l = last.value
+  if (!l || l.clean === undefined) return null
+  if (!l.clean) return { weight: l.weight, up: false }
+  let weight = Math.round((l.weight + stepOf(l.unit, l.perDumbbell)) * 10) / 10
+  if (max.value && max.value.unit === l.unit) weight = Math.max(l.weight, Math.min(weight, max.value.weight))
+  return { weight, up: weight > l.weight }
+})
+
 function useLast() {
   const l = last.value
   if (!l) return
-  form.weight = l.weight
+  form.weight = next.value?.weight ?? l.weight
   form.unit = l.unit
   form.perDumbbell = !!l.perDumbbell
   if (l.sets) form.sets = l.sets
@@ -130,8 +143,8 @@ function useLast() {
 }
 
 // Weight stepper. Empty weight shows last time's value as the placeholder; +/- start from it.
-const step = computed(() => (form.unit === 'lbs' ? 5 : form.perDumbbell ? 1 : 2.5))
-const placeholder = computed(() => (last.value && last.value.unit === form.unit ? last.value.weight : 0))
+const step = computed(() => stepOf(form.unit, form.perDumbbell))
+const placeholder = computed(() => (last.value && last.value.unit === form.unit ? next.value?.weight ?? last.value.weight : 0))
 function nudge(dir: 1 | -1) {
   const base = form.weight ?? placeholder.value
   form.weight = Math.max(0, Math.round((base + dir * step.value) * 10) / 10)
@@ -180,6 +193,7 @@ function startEdit(exercise: string) {
   form.perDumbbell = !!e.perDumbbell
   form.sets = e.sets ?? 3
   form.reps = e.reps ?? 10
+  form.clean = !!e.clean
   if (e.bodyWeightKg) form.bodyWeightKg = e.bodyWeightKg
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
@@ -187,6 +201,7 @@ function startEdit(exercise: string) {
 function stopEdit() {
   editing.value = null
   form.weight = undefined
+  form.clean = false
 }
 
 function flash(text: string) {
@@ -212,6 +227,7 @@ async function save() {
       sets: form.sets,
       reps: form.reps,
       perDumbbell: form.perDumbbell || undefined,
+      clean: form.clean,
       bodyWeightKg: form.bodyWeightKg
     })
     flash(`Updated ${name.value}`)
@@ -237,6 +253,7 @@ async function save() {
     sets: form.sets,
     reps: form.reps,
     perDumbbell: form.perDumbbell || undefined,
+    clean: form.clean,
     bodyWeightKg: form.bodyWeightKg,
     // Time of day, for muscle recovery. Only known when logging on the day itself.
     at: form.date === todayISO() ? new Date().toISOString() : undefined,
@@ -245,6 +262,7 @@ async function save() {
   flash(`Saved ${name.value}`)
   form.weight = undefined
   form.custom = ''
+  form.clean = false
 }
 
 // Picker sheet
@@ -277,6 +295,7 @@ function pick(n: string, info?: AiExercise) {
     form.custom = n
   }
   form.weight = undefined
+  form.clean = false
   if (info) form.perDumbbell = info.perDumbbell
   picking.value = false
 }
@@ -544,8 +563,15 @@ const segment = (s: string) =>
                 {{ last.weight }} {{ last.unit }}<span v-if="last.perDumbbell" class="text-[15px] font-normal text-neutral-400"> each</span>
                 <span class="text-[15px] font-normal text-neutral-400"> ≈ {{ convertedFull(last) }}</span>
               </span>
-              <span v-if="last.sets && last.reps" class="tnum text-sm text-neutral-300">{{ last.sets }} × {{ last.reps }}</span>
+              <span v-if="last.sets && last.reps" class="tnum text-sm text-neutral-300">
+                {{ last.sets }} × {{ last.reps }}<template v-if="last.clean !== undefined"><span class="text-neutral-400"> · {{ last.clean ? 'clean' : 'not clean' }}</span></template>
+              </span>
               <span v-else class="text-sm text-neutral-400">Baseline, no sets/reps</span>
+              <span v-if="next" class="tnum text-[13px]" :class="next.up ? 'text-accent-300' : 'text-neutral-400'">
+                <i class="ph" :class="next.up ? 'ph-trend-up' : 'ph-equals'" />
+                Today {{ next.weight }} {{ last.unit }}
+                · {{ next.up ? `+${Math.round((next.weight - last.weight) * 10) / 10}, reps were clean` : last.clean ? 'machine max reached' : 'same weight, reps not clean yet' }}
+              </span>
             </div>
             <button type="button" class="btn-outline h-11 flex-none px-3.5 text-sm" @click="useLast">
               <i class="ph ph-arrow-u-down-left" />Continue
@@ -714,6 +740,20 @@ const segment = (s: string) =>
               class="absolute left-[3px] top-[3px] size-[26px] rounded-[13px] transition-transform"
               :class="form.perDumbbell ? 'translate-x-5 bg-accent-200' : 'bg-neutral-400'"
             />
+          </span>
+        </label>
+        <!-- Clean reps: decides next time's weight -->
+        <label class="flex min-h-12 cursor-pointer items-center justify-between gap-3">
+          <span class="flex flex-col">
+            <span class="text-[15px]">All reps were clean</span>
+            <span class="text-[13px] text-neutral-400">{{ form.clean ? 'Next time goes up a step' : 'Next time stays at this weight' }}</span>
+          </span>
+          <input v-model="form.clean" type="checkbox" class="peer sr-only" />
+          <span
+            class="flex size-8 flex-none items-center justify-center rounded-[8px] text-lg transition-colors peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent"
+            :class="form.clean ? 'bg-accent-700 text-accent-100' : 'shadow-[inset_0_0_0_1.5px_theme(colors.neutral.600)]'"
+          >
+            <i v-if="form.clean" class="ph-bold ph-check" />
           </span>
         </label>
         <button
